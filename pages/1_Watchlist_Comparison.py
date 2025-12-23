@@ -51,10 +51,51 @@ with nav_col4:
         # Clear comparison data when watchlist changes
         if 'comparison_loaded' in st.session_state:
             st.session_state.comparison_loaded = False
+        # Clear any custom stock
+        if 'custom_comparison_stock' in st.session_state:
+            del st.session_state.custom_comparison_stock
         st.rerun()
 
 # Get current watchlist stocks
 WATCHLIST_STOCKS = get_watchlist_stocks(st.session_state.selected_watchlist)
+
+# --- Add Custom Stock Search ---
+with nav_col5:
+    search_col1, search_col2 = st.columns([3, 1])
+    with search_col1:
+        custom_ticker = st.text_input(
+            "Add stock to compare",
+            placeholder="Enter ticker (e.g., NVDA)",
+            key="custom_stock_input",
+            label_visibility="collapsed"
+        )
+    with search_col2:
+        add_stock = st.button("➕ Add", key="add_custom_stock", use_container_width=True)
+    
+    if add_stock and custom_ticker:
+        custom_ticker = custom_ticker.upper().strip()
+        if custom_ticker and custom_ticker not in WATCHLIST_STOCKS:
+            st.session_state.custom_comparison_stock = custom_ticker
+            # Clear comparison data to reload with new stock
+            if 'comparison_loaded' in st.session_state:
+                st.session_state.comparison_loaded = False
+            st.rerun()
+
+# Add custom stock to the list if present
+if 'custom_comparison_stock' in st.session_state:
+    custom_stock = st.session_state.custom_comparison_stock
+    if custom_stock not in WATCHLIST_STOCKS:
+        WATCHLIST_STOCKS = WATCHLIST_STOCKS + [custom_stock]
+    # Show indicator that custom stock is added with remove button
+    custom_info_col1, custom_info_col2 = st.columns([6, 1])
+    with custom_info_col1:
+        st.info(f"📌 **{custom_stock}** added to comparison. It will appear at the bottom of the table.")
+    with custom_info_col2:
+        if st.button("✕ Remove", key="remove_custom_stock"):
+            del st.session_state.custom_comparison_stock
+            if 'comparison_loaded' in st.session_state:
+                st.session_state.comparison_loaded = False
+            st.rerun()
 
 st.markdown("---")
 
