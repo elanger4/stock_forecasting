@@ -1525,4 +1525,30 @@ else:
 
 # Footer
 st.markdown("---")
+
+# Help/Documentation section
+footer_col1, footer_col2 = st.columns([1, 5])
+with footer_col1:
+    show_help = st.button("ℹ️ Help & Documentation", key="show_help_docs", use_container_width=True)
+
+if show_help:
+    st.session_state.show_help_dialog = True
+
+if st.session_state.get('show_help_dialog', False):
+    @st.dialog("📖 Stock Analysis - Documentation", width="large")
+    def show_help_dialog():
+        # Read the markdown file
+        try:
+            with open("STOCK_ANALYSIS.md", "r") as f:
+                help_content = f.read()
+            st.markdown(help_content)
+        except FileNotFoundError:
+            st.error("Documentation file not found.")
+        
+        if st.button("Close", key="close_help"):
+            st.session_state.show_help_dialog = False
+            st.rerun()
+    
+    show_help_dialog()
+
 st.caption("Data provided by Yahoo Finance via yfinance. This tool is for educational purposes only and does not constitute financial advice.")
