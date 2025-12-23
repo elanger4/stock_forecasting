@@ -552,6 +552,12 @@ def fetch_stock_data(ticker: str) -> dict:
         except:
             insider_purchases = None
         
+        # DCF data - Free Cash Flow
+        free_cash_flow = info.get('freeCashflow')
+        operating_cash_flow = info.get('operatingCashflow')
+        total_debt = info.get('totalDebt', 0) or 0
+        total_cash = info.get('totalCash', 0) or 0
+        
         return {
             'current_price': current_price,
             'total_revenue': total_revenue,
@@ -604,6 +610,11 @@ def fetch_stock_data(ticker: str) -> dict:
             # Insider data
             'insider_transactions': insider_transactions,
             'insider_purchases': insider_purchases,
+            # DCF data
+            'free_cash_flow': free_cash_flow,
+            'operating_cash_flow': operating_cash_flow,
+            'total_debt': total_debt,
+            'total_cash': total_cash,
             'success': True,
             'error': None
         }
@@ -612,6 +623,94 @@ def fetch_stock_data(ticker: str) -> dict:
             'success': False,
             'error': str(e)
         }
+
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def get_treasury_yield() -> float:
+    """Fetch the current 10-Year Treasury yield from yfinance."""
+    try:
+        treasury = yf.Ticker("^TNX")
+        hist = treasury.history(period="1d")
+        if not hist.empty:
+            # ^TNX is quoted as a percentage (e.g., 4.5 for 4.5%)
+            return hist['Close'].iloc[-1] / 100  # Convert to decimal
+        return 0.045  # Default to 4.5% if fetch fails
+    except:
+        return 0.045  # Default to 4.5%
+
+def calculate_dcf(
+    free_cash_flow: float,
+    fcf_growth_rate: float,  # As decimal (e.g., 0.15 for 15%)
+    discount_rate: float,  # As decimal (e.g., 0.10 for 10%)
+    terminal_growth_rate: float = 0.03,  # 3% default
+    projection_years: int = 5,
+    total_debt: float = 0,
+    total_cash: float = 0,
+    shares_outstanding: float = 1
+) -> dict:
+    """
+    Calculate DCF intrinsic value per share.
+    
+    Returns dict with:
+    - intrinsic_value: Fair value per share
+    - pv_fcfs: Present value of projected FCFs
+    - terminal_value: Present value of terminal value
+    - enterprise_value: Total enterprise value
+    - equity_value: Enterprise value - debt + cash
+    - fcf_negative: Whether FCF is negative (warning flag)
+    """
+    if free_cash_flow is None or shares_outstanding is None or shares_outstanding == 0:
+        return {'intrinsic_value': None, 'error': 'Missing data'}
+    
+    fcf_negative = free_cash_flow < 0
+    
+    # Project FCFs for each year and discount them
+    projected_fcfs = []
+    discounted_fcfs = []
+    fcf = free_cash_flow
+    
+    for year in range(1, projection_years + 1):
+        fcf = fcf * (1 + fcf_growth_rate)
+        projected_fcfs.append(fcf)
+        # Discount factor = 1 / (1 + r)^n
+        discount_factor = 1 / ((1 + discount_rate) ** year)
+        discounted_fcfs.append(fcf * discount_factor)
+    
+    pv_fcfs = sum(discounted_fcfs)
+    
+    # Terminal value using Gordon Growth Model
+    # TV = FCF_final * (1 + g) / (r - g)
+    final_fcf = projected_fcfs[-1]
+    
+    # Ensure discount rate > terminal growth rate to avoid division issues
+    if discount_rate <= terminal_growth_rate:
+        terminal_growth_rate = discount_rate - 0.01  # Adjust to be slightly below
+    
+    terminal_value = final_fcf * (1 + terminal_growth_rate) / (discount_rate - terminal_growth_rate)
+    
+    # Discount terminal value to present
+    terminal_discount_factor = 1 / ((1 + discount_rate) ** projection_years)
+    pv_terminal = terminal_value * terminal_discount_factor
+    
+    # Enterprise value = PV of FCFs + PV of Terminal Value
+    enterprise_value = pv_fcfs + pv_terminal
+    
+    # Equity value = Enterprise Value - Debt + Cash
+    equity_value = enterprise_value - total_debt + total_cash
+    
+    # Intrinsic value per share
+    intrinsic_value = equity_value / shares_outstanding
+    
+    return {
+        'intrinsic_value': intrinsic_value,
+        'pv_fcfs': pv_fcfs,
+        'pv_terminal': pv_terminal,
+        'enterprise_value': enterprise_value,
+        'equity_value': equity_value,
+        'fcf_negative': fcf_negative,
+        'discount_rate': discount_rate,
+        'projected_fcfs': projected_fcfs,
+        'error': None
+    }
 
 def calculate_projections(data: dict, revenue_growth: float, net_margin: float) -> pd.DataFrame:
     """Calculate 5-year projections."""
@@ -1538,6 +1637,105 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
         st.metric("Net Income", format_large_number(data['net_income']), help="Net income (profit) after all expenses, taxes, and costs. This is the bottom-line earnings.")
     with m5:
         st.metric("Current Margin", format_percent(data['current_margin']), help="Net Income Margin = Net Income / Revenue. Shows what percentage of revenue becomes profit. Higher is better.")
+    
+    # DCF Intrinsic Value Section
+    st.markdown("---")
+    st.subheader("💰 DCF Intrinsic Value")
+    
+    # Fetch 10Y Treasury yield and calculate discount rate
+    treasury_yield = get_treasury_yield()
+    discount_rate = treasury_yield + 0.03  # 10Y Treasury + 3% risk premium
+    
+    # Use base case revenue growth for FCF growth (from data)
+    # This will be updated later when sidebar values are available
+    base_revenue_growth = data.get('revenue_growth', 10.0)  # Default 10% if not available
+    fcf_growth_rate = base_revenue_growth / 100  # Convert from percentage to decimal
+    
+    # Calculate DCF
+    dcf_result = calculate_dcf(
+        free_cash_flow=data.get('free_cash_flow'),
+        fcf_growth_rate=fcf_growth_rate,
+        discount_rate=discount_rate,
+        terminal_growth_rate=0.03,  # 3% terminal growth
+        projection_years=5,
+        total_debt=data.get('total_debt', 0),
+        total_cash=data.get('total_cash', 0),
+        shares_outstanding=data.get('shares_outstanding', 1)
+    )
+    
+    if dcf_result.get('intrinsic_value') is not None:
+        intrinsic_value = dcf_result['intrinsic_value']
+        current_price = data['current_price']
+        
+        # Calculate upside/downside and margin of safety
+        if current_price and current_price > 0:
+            upside_pct = ((intrinsic_value / current_price) - 1) * 100
+            margin_of_safety = ((intrinsic_value - current_price) / intrinsic_value) * 100 if intrinsic_value > 0 else 0
+        else:
+            upside_pct = 0
+            margin_of_safety = 0
+        
+        dcf_cols = st.columns(4)
+        with dcf_cols[0]:
+            # Show warning icon if FCF is negative
+            label = "⚠️ DCF Fair Value" if dcf_result.get('fcf_negative') else "DCF Fair Value"
+            st.metric(
+                label,
+                f"${intrinsic_value:.2f}" if intrinsic_value > 0 else f"${intrinsic_value:.2f}",
+                delta=f"{upside_pct:+.1f}% vs current",
+                delta_color="normal" if upside_pct > 0 else "inverse",
+                help="Intrinsic value per share based on Discounted Cash Flow analysis. Compares projected future cash flows discounted to present value."
+            )
+        with dcf_cols[1]:
+            # Margin of safety - positive means stock is undervalued
+            safety_color = "normal" if margin_of_safety > 0 else "inverse"
+            st.metric(
+                "Margin of Safety",
+                f"{margin_of_safety:.1f}%",
+                delta="Undervalued" if margin_of_safety > 15 else ("Fair Value" if margin_of_safety > -15 else "Overvalued"),
+                delta_color=safety_color,
+                help="Margin of Safety = (Intrinsic Value - Price) / Intrinsic Value. Positive means stock trades below fair value. >15% is typically considered a good margin."
+            )
+        with dcf_cols[2]:
+            st.metric(
+                "Discount Rate",
+                f"{discount_rate*100:.1f}%",
+                help=f"10Y Treasury ({treasury_yield*100:.2f}%) + 3% risk premium. Used to discount future cash flows to present value."
+            )
+        with dcf_cols[3]:
+            fcf = data.get('free_cash_flow')
+            fcf_display = format_large_number(fcf) if fcf else "N/A"
+            st.metric(
+                "Free Cash Flow",
+                fcf_display,
+                help="Current annual Free Cash Flow (Operating Cash Flow - CapEx). This is the cash available to shareholders after all expenses and investments."
+            )
+        
+        # Warning for negative FCF
+        if dcf_result.get('fcf_negative'):
+            st.warning("⚠️ **Negative Free Cash Flow**: This company is currently burning cash. DCF valuation shows what the stock would be worth if cash burn continues at the projected growth rate. Use with caution.")
+        
+        # Expandable DCF details
+        with st.expander("📊 DCF Calculation Details"):
+            detail_cols = st.columns(3)
+            with detail_cols[0]:
+                st.markdown("**Assumptions**")
+                st.write(f"- FCF Growth Rate: {fcf_growth_rate*100:.1f}% (Base case)")
+                st.write(f"- Terminal Growth: 3.0%")
+                st.write(f"- Discount Rate: {discount_rate*100:.1f}%")
+                st.write(f"- Projection Years: 5")
+            with detail_cols[1]:
+                st.markdown("**Valuation Components**")
+                st.write(f"- PV of FCFs: {format_large_number(dcf_result.get('pv_fcfs', 0))}")
+                st.write(f"- PV of Terminal: {format_large_number(dcf_result.get('pv_terminal', 0))}")
+                st.write(f"- Enterprise Value: {format_large_number(dcf_result.get('enterprise_value', 0))}")
+            with detail_cols[2]:
+                st.markdown("**Equity Calculation**")
+                st.write(f"- Total Debt: {format_large_number(data.get('total_debt', 0))}")
+                st.write(f"- Total Cash: {format_large_number(data.get('total_cash', 0))}")
+                st.write(f"- Equity Value: {format_large_number(dcf_result.get('equity_value', 0))}")
+    else:
+        st.info("💡 DCF valuation not available. Free Cash Flow data may be missing for this stock.")
     
     # Warning for negative earnings
     if data['current_eps'] and data['current_eps'] < 0:
