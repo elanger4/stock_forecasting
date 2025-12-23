@@ -28,12 +28,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- Page Navigation & Watchlist Selector ---
-nav_col1, nav_col2, nav_col3, nav_col4 = st.columns([1, 1, 1, 3])
+nav_col1, nav_col2, nav_col3, nav_col4, nav_col5 = st.columns([1, 1, 1, 1, 2])
 with nav_col1:
     st.markdown("👉 [Stock Analysis](/)")
 with nav_col2:
     st.markdown("**📋 Watchlist Comparison** *(current)*")
 with nav_col3:
+    st.markdown("👉 [Monte Carlo](/Monte_Carlo)")
+with nav_col4:
     # Watchlist selector
     watchlist_names = get_watchlist_names()
     current_idx = watchlist_names.index(st.session_state.selected_watchlist) if st.session_state.selected_watchlist in watchlist_names else 0

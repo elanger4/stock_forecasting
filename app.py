@@ -526,6 +526,32 @@ def fetch_stock_data(ticker: str) -> dict:
         except:
             mutualfund_holders = None
         
+        # Analyst price targets
+        target_low = info.get('targetLowPrice')
+        target_mean = info.get('targetMeanPrice')
+        target_high = info.get('targetHighPrice')
+        target_median = info.get('targetMedianPrice')
+        recommendation = info.get('recommendationKey')
+        recommendation_mean = info.get('recommendationMean')
+        num_analysts = info.get('numberOfAnalystOpinions')
+        
+        # Analyst recommendations history
+        try:
+            recommendations = stock.recommendations
+        except:
+            recommendations = None
+        
+        # Insider transactions
+        try:
+            insider_transactions = stock.insider_transactions
+        except:
+            insider_transactions = None
+        
+        try:
+            insider_purchases = stock.insider_purchases
+        except:
+            insider_purchases = None
+        
         return {
             'current_price': current_price,
             'total_revenue': total_revenue,
@@ -566,6 +592,18 @@ def fetch_stock_data(ticker: str) -> dict:
             'mutualfund_holders': mutualfund_holders,
             # Historical data for tables
             'historical_data': historical_data,
+            # Analyst data
+            'target_low': target_low,
+            'target_mean': target_mean,
+            'target_high': target_high,
+            'target_median': target_median,
+            'recommendation': recommendation,
+            'recommendation_mean': recommendation_mean,
+            'num_analysts': num_analysts,
+            'recommendations': recommendations,
+            # Insider data
+            'insider_transactions': insider_transactions,
+            'insider_purchases': insider_purchases,
             'success': True,
             'error': None
         }
@@ -794,12 +832,14 @@ def build_scenario_table(data: dict, revenue_growth: float, net_margin: float, s
     return df, projections, cagr_low, cagr_high
 
 # --- Page Navigation & Watchlist Selector ---
-nav_col1, nav_col2, nav_col3, nav_col4 = st.columns([1, 1, 1, 3])
+nav_col1, nav_col2, nav_col3, nav_col4, nav_col5 = st.columns([1, 1, 1, 1, 2])
 with nav_col1:
     st.markdown("**📊 Stock Analysis** *(current)*")
 with nav_col2:
     st.markdown("👉 [Watchlist Comparison](/Watchlist_Comparison)")
 with nav_col3:
+    st.markdown("👉 [Monte Carlo](/Monte_Carlo)")
+with nav_col4:
     # Watchlist selector
     watchlist_names = get_watchlist_names()
     current_idx = watchlist_names.index(st.session_state.selected_watchlist) if st.session_state.selected_watchlist in watchlist_names else 0
@@ -1159,14 +1199,18 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
     
     st.markdown("---")
     
-    # Company info header with View Financials and Holders buttons
-    header_col, financials_col, holders_col = st.columns([4, 1, 1])
+    # Company info header with action buttons
+    header_col, financials_col, holders_col, analysts_col, insiders_col = st.columns([3, 1, 1, 1, 1])
     with header_col:
         st.header(f"{data['company_name']} ({st.session_state.ticker})")
     with financials_col:
         show_financials = st.button("📊 Financials", key="show_financials", use_container_width=True, help="View detailed financial statements")
     with holders_col:
         show_holders = st.button("🏛️ Holders", key="show_holders", use_container_width=True, help="View institutional and major holders")
+    with analysts_col:
+        show_analysts = st.button("🎯 Analysts", key="show_analysts", use_container_width=True, help="View analyst price targets and recommendations")
+    with insiders_col:
+        show_insiders = st.button("👤 Insiders", key="show_insiders", use_container_width=True, help="View insider trading activity")
     
     # Financials dialog/modal
     if show_financials:
@@ -1309,6 +1353,178 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
                     st.dataframe(formatted_mf, use_container_width=True, height=400)
                 else:
                     st.info("Mutual fund holders data not available")
+    
+    # Analysts dialog
+    if show_analysts:
+        st.session_state.show_analysts_dialog = True
+    
+    if st.session_state.get('show_analysts_dialog', False):
+        with st.expander(f"🎯 {data['company_name']} Analyst Coverage", expanded=True):
+            close_col1, close_col2 = st.columns([6, 1])
+            with close_col2:
+                if st.button("✕ Close", key="close_analysts"):
+                    st.session_state.show_analysts_dialog = False
+                    st.rerun()
+            
+            # Price Targets Summary
+            st.markdown("### 📊 Price Targets")
+            
+            target_low = data.get('target_low')
+            target_mean = data.get('target_mean')
+            target_high = data.get('target_high')
+            target_median = data.get('target_median')
+            current_price = data.get('current_price')
+            num_analysts = data.get('num_analysts')
+            
+            if target_mean or target_low or target_high:
+                # Calculate upside/downside
+                if current_price and target_mean:
+                    upside = ((target_mean / current_price) - 1) * 100
+                    upside_str = f"+{upside:.1f}%" if upside > 0 else f"{upside:.1f}%"
+                else:
+                    upside_str = "N/A"
+                
+                target_cols = st.columns(5)
+                with target_cols[0]:
+                    st.metric("Current Price", f"${current_price:.2f}" if current_price else "N/A")
+                with target_cols[1]:
+                    st.metric("Target Low", f"${target_low:.2f}" if target_low else "N/A")
+                with target_cols[2]:
+                    st.metric("Target Mean", f"${target_mean:.2f}" if target_mean else "N/A", delta=upside_str if target_mean else None)
+                with target_cols[3]:
+                    st.metric("Target High", f"${target_high:.2f}" if target_high else "N/A")
+                with target_cols[4]:
+                    st.metric("# Analysts", str(num_analysts) if num_analysts else "N/A")
+                
+                # Visual price target range
+                if target_low and target_high and current_price:
+                    st.markdown("#### Price Target Range")
+                    range_width = target_high - target_low
+                    if range_width > 0:
+                        current_pos = ((current_price - target_low) / range_width) * 100
+                        current_pos = max(0, min(100, current_pos))  # Clamp to 0-100
+                        
+                        st.markdown(f"""
+                        <div style="background: linear-gradient(to right, #ff6b6b 0%, #ffd93d 50%, #6bcb77 100%); 
+                                    height: 20px; border-radius: 10px; position: relative; margin: 10px 0;">
+                            <div style="position: absolute; left: {current_pos}%; top: -5px; 
+                                        width: 4px; height: 30px; background: white; border-radius: 2px;"></div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                            <span>${target_low:.2f}</span>
+                            <span style="font-weight: bold;">Current: ${current_price:.2f}</span>
+                            <span>${target_high:.2f}</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+            else:
+                st.info("No analyst price targets available for this stock.")
+            
+            st.markdown("---")
+            
+            # Recommendation Summary
+            st.markdown("### 📈 Analyst Recommendation")
+            recommendation = data.get('recommendation')
+            recommendation_mean = data.get('recommendation_mean')
+            
+            if recommendation:
+                # Map recommendation to color and emoji
+                rec_map = {
+                    'strongBuy': ('🟢', 'Strong Buy', '#22c55e'),
+                    'buy': ('🟢', 'Buy', '#84cc16'),
+                    'hold': ('🟡', 'Hold', '#eab308'),
+                    'sell': ('🔴', 'Sell', '#f97316'),
+                    'strongSell': ('🔴', 'Strong Sell', '#ef4444'),
+                }
+                emoji, label, color = rec_map.get(recommendation, ('⚪', recommendation.title(), '#6b7280'))
+                
+                rec_cols = st.columns([1, 2])
+                with rec_cols[0]:
+                    st.markdown(f"<h2 style='color: {color};'>{emoji} {label}</h2>", unsafe_allow_html=True)
+                with rec_cols[1]:
+                    if recommendation_mean:
+                        st.caption(f"Mean Score: {recommendation_mean:.2f} (1=Strong Buy, 5=Strong Sell)")
+            else:
+                st.info("No analyst recommendation available.")
+            
+            st.markdown("---")
+            
+            # Recommendations History
+            st.markdown("### 📅 Recommendations History")
+            recommendations = data.get('recommendations')
+            if recommendations is not None and not recommendations.empty:
+                # Get recent recommendations (last 10)
+                recent_recs = recommendations.tail(10).copy()
+                recent_recs = recent_recs.sort_index(ascending=False)
+                
+                # Format the index (dates)
+                if hasattr(recent_recs.index, 'strftime'):
+                    recent_recs.index = recent_recs.index.strftime('%Y-%m-%d')
+                
+                st.dataframe(recent_recs, use_container_width=True, height=300)
+            else:
+                st.info("No recommendations history available.")
+    
+    # Insiders dialog
+    if show_insiders:
+        st.session_state.show_insiders_dialog = True
+    
+    if st.session_state.get('show_insiders_dialog', False):
+        with st.expander(f"👤 {data['company_name']} Insider Activity", expanded=True):
+            close_col1, close_col2 = st.columns([6, 1])
+            with close_col2:
+                if st.button("✕ Close", key="close_insiders"):
+                    st.session_state.show_insiders_dialog = False
+                    st.rerun()
+            
+            insider_tab1, insider_tab2 = st.tabs(["📋 Recent Transactions", "📊 Purchase Summary"])
+            
+            with insider_tab1:
+                insider_transactions = data.get('insider_transactions')
+                if insider_transactions is not None and not insider_transactions.empty:
+                    # Format the dataframe
+                    formatted_trans = insider_transactions.copy()
+                    
+                    # Format value/shares columns if they exist
+                    if 'Value' in formatted_trans.columns:
+                        formatted_trans['Value'] = formatted_trans['Value'].apply(
+                            lambda x: f"${x/1e6:.2f}M" if pd.notna(x) and abs(x) >= 1e6 else 
+                                     (f"${x:,.0f}" if pd.notna(x) else "—")
+                        )
+                    if 'Shares' in formatted_trans.columns:
+                        formatted_trans['Shares'] = formatted_trans['Shares'].apply(
+                            lambda x: f"{x:,.0f}" if pd.notna(x) else "—"
+                        )
+                    
+                    # Color code buys vs sells
+                    st.dataframe(formatted_trans, use_container_width=True, height=400)
+                    
+                    # Summary stats
+                    st.markdown("---")
+                    st.markdown("#### Transaction Summary")
+                    
+                    # Try to count buys vs sells
+                    if 'Text' in insider_transactions.columns:
+                        buys = insider_transactions['Text'].str.contains('Buy|Purchase|Acquisition', case=False, na=False).sum()
+                        sells = insider_transactions['Text'].str.contains('Sale|Sell|Disposition', case=False, na=False).sum()
+                        
+                        sum_cols = st.columns(3)
+                        with sum_cols[0]:
+                            st.metric("🟢 Buy Transactions", buys)
+                        with sum_cols[1]:
+                            st.metric("🔴 Sell Transactions", sells)
+                        with sum_cols[2]:
+                            net = buys - sells
+                            st.metric("Net Activity", f"+{net}" if net > 0 else str(net), 
+                                     delta="Bullish" if net > 0 else ("Bearish" if net < 0 else "Neutral"))
+                else:
+                    st.info("No insider transaction data available.")
+            
+            with insider_tab2:
+                insider_purchases = data.get('insider_purchases')
+                if insider_purchases is not None and not insider_purchases.empty:
+                    st.dataframe(insider_purchases, use_container_width=True, height=300)
+                else:
+                    st.info("No insider purchase summary available.")
     
     # Current metrics
     m1, m2, m3, m4, m5 = st.columns(5)
