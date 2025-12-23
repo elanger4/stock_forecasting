@@ -2,8 +2,6 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import json
-from streamlit_js_eval import streamlit_js_eval
 
 st.set_page_config(page_title="Stock Valuation Projection Engine", layout="wide")
 
@@ -82,56 +80,12 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- Portfolio Functions (Local Storage) ---
-
-def init_portfolio():
-    """Initialize portfolio in session state."""
-    if 'portfolio' not in st.session_state:
-        st.session_state.portfolio = []
-    if 'portfolio_loaded' not in st.session_state:
-        st.session_state.portfolio_loaded = False
-
-def load_portfolio_from_storage():
-    """Load portfolio from browser localStorage."""
-    if not st.session_state.portfolio_loaded:
-        try:
-            result = streamlit_js_eval(js_expressions="localStorage.getItem('stock_portfolio')", key="load_portfolio")
-            if result:
-                st.session_state.portfolio = json.loads(result)
-            st.session_state.portfolio_loaded = True
-        except:
-            pass
-
-def save_portfolio_to_storage():
-    """Save portfolio to browser localStorage."""
-    try:
-        portfolio_json = json.dumps(st.session_state.portfolio)
-        streamlit_js_eval(js_expressions=f"localStorage.setItem('stock_portfolio', '{portfolio_json}')", key="save_portfolio_" + str(len(st.session_state.portfolio)))
-    except:
-        pass
-
-def add_to_portfolio(ticker: str):
-    """Add a stock to portfolio."""
-    if ticker and ticker not in st.session_state.portfolio:
-        st.session_state.portfolio.append(ticker)
-        save_portfolio_to_storage()
-        return True
-    return False
-
-def remove_from_portfolio(ticker: str):
-    """Remove a stock from portfolio."""
-    if ticker in st.session_state.portfolio:
-        st.session_state.portfolio.remove(ticker)
-        save_portfolio_to_storage()
-        return True
-    return False
-
-def is_in_portfolio(ticker: str) -> bool:
-    """Check if stock is in portfolio."""
-    return ticker in st.session_state.portfolio
-
-# Initialize portfolio
-init_portfolio()
+# Preset watchlist stocks (defined early for use in helper functions)
+WATCHLIST_STOCKS = [
+    "",  # Empty option for custom input
+    "ADBE", "AMD", "AMZN", "AXP", "BTI", "CCOEY", "CELH", "FUBO", 
+    "HNST", "LNTH", "MU", "NVDA", "PLTR", "PYPL", "RVLV", "TSLZ", "TSM", "VICE"
+]
 
 # --- Helper Functions ---
 
@@ -162,6 +116,160 @@ def format_percent(value: float) -> str:
     if value is None or np.isnan(value):
         return "N/A"
     return f"{value:.1f}%"
+
+def fetch_watchlist_news():
+    """Fetch news for all watchlist stocks (most recent articles)."""
+    from datetime import datetime, timedelta
+    all_news = []
+    
+    for stock_ticker in WATCHLIST_STOCKS[1:]:  # Skip empty string
+        try:
+            stock = yf.Ticker(stock_ticker)
+            news = stock.news
+            if news:
+                for article in news[:3]:  # Limit per stock
+                    # Try multiple ways to get title
+                    title = None
+                    link = '#'
+                    pub_timestamp = None
+                    
+                    # Check if article has 'content' structure (newer yfinance format)
+                    content = article.get('content', {})
+                    publisher = ''
+                    if isinstance(content, dict) and content:
+                        title = content.get('title', '')
+                        # Get link from canonicalUrl
+                        canonical = content.get('canonicalUrl', {})
+                        if isinstance(canonical, dict):
+                            link = canonical.get('url', '#')
+                        # Get publisher
+                        provider = content.get('provider', {})
+                        if isinstance(provider, dict):
+                            publisher = provider.get('displayName', '')
+                        # Get pubDate (string format like "2024-12-23T10:30:00Z")
+                        pub_date_str = content.get('pubDate', '')
+                        if pub_date_str:
+                            try:
+                                # Parse ISO format date
+                                pub_timestamp = datetime.fromisoformat(pub_date_str.replace('Z', '+00:00'))
+                                pub_timestamp = pub_timestamp.replace(tzinfo=None)  # Remove timezone for comparison
+                            except:
+                                pass
+                    
+                    # Fallback to older yfinance format
+                    if not title:
+                        title = article.get('title', '')
+                    if link == '#':
+                        link = article.get('link', '#')
+                    if not publisher:
+                        publisher = article.get('publisher', '')
+                    if not pub_timestamp:
+                        # providerPublishTime is Unix timestamp
+                        unix_time = article.get('providerPublishTime', 0)
+                        if isinstance(unix_time, (int, float)) and unix_time > 0:
+                            try:
+                                pub_timestamp = datetime.fromtimestamp(unix_time)
+                            except:
+                                pass
+                    
+                    if not title:
+                        continue
+                    
+                    # Default timestamp if still none
+                    if not pub_timestamp:
+                        pub_timestamp = datetime.now() - timedelta(days=1)  # Default to 1 day ago
+                    
+                    all_news.append({
+                        'ticker': stock_ticker,
+                        'title': title,
+                        'link': link,
+                        'publisher': publisher,
+                        'timestamp': pub_timestamp
+                    })
+        except Exception:
+            pass
+    
+    # Sort by timestamp (most recent first)
+    all_news.sort(key=lambda x: x['timestamp'], reverse=True)
+    return all_news[:30]  # Limit total to 30 articles
+
+def fetch_calendar_events(ticker: str) -> list:
+    """Fetch calendar events for a single stock. Returns list of (date, event_type, ticker) tuples."""
+    from datetime import datetime
+    import pandas as pd
+    today = datetime.now().date()
+    events = []
+    
+    try:
+        stock = yf.Ticker(ticker)
+        
+        # Get calendar data
+        try:
+            calendar = stock.calendar
+            if calendar is not None:
+                # Handle both dict and DataFrame formats
+                if isinstance(calendar, pd.DataFrame):
+                    calendar = calendar.to_dict()
+                
+                if isinstance(calendar, dict):
+                    # Earnings dates
+                    if 'Earnings Date' in calendar:
+                        earnings = calendar['Earnings Date']
+                        if isinstance(earnings, list):
+                            for e in earnings:
+                                try:
+                                    e_date = e.date() if hasattr(e, 'date') else e
+                                    if e_date >= today:
+                                        events.append((e_date, 'Earnings', ticker))
+                                except:
+                                    pass
+                        elif earnings is not None:
+                            try:
+                                e_date = earnings.date() if hasattr(earnings, 'date') else earnings
+                                if e_date >= today:
+                                    events.append((e_date, 'Earnings', ticker))
+                            except:
+                                pass
+                    
+                    # Dividend date
+                    if 'Dividend Date' in calendar and calendar['Dividend Date'] is not None:
+                        div_date = calendar['Dividend Date']
+                        try:
+                            d_date = div_date.date() if hasattr(div_date, 'date') else div_date
+                            if d_date >= today:
+                                events.append((d_date, 'Dividend', ticker))
+                        except:
+                            pass
+                    
+                    # Ex-Dividend date
+                    if 'Ex-Dividend Date' in calendar and calendar['Ex-Dividend Date'] is not None:
+                        ex_div = calendar['Ex-Dividend Date']
+                        try:
+                            ex_date = ex_div.date() if hasattr(ex_div, 'date') else ex_div
+                            if ex_date >= today:
+                                events.append((ex_date, 'Ex-Dividend', ticker))
+                        except:
+                            pass
+        except Exception:
+            pass
+        
+        # Get earnings dates from earnings_dates property
+        try:
+            earnings_dates = stock.earnings_dates
+            if earnings_dates is not None and not earnings_dates.empty:
+                for date_idx in earnings_dates.index[:4]:  # Limit to next 4
+                    try:
+                        e_date = date_idx.date() if hasattr(date_idx, 'date') else date_idx
+                        if e_date >= today:
+                            events.append((e_date, 'Earnings', ticker))
+                    except:
+                        pass
+        except Exception:
+            pass
+    except Exception:
+        pass
+    
+    return events
 
 def fetch_stock_data(ticker: str) -> dict:
     """Fetch all required stock data from yfinance."""
@@ -294,6 +402,14 @@ def fetch_stock_data(ticker: str) -> dict:
         except:
             earnings_dates = None
         
+        # 52-week high and low
+        fifty_two_week_low = info.get('fiftyTwoWeekLow')
+        fifty_two_week_high = info.get('fiftyTwoWeekHigh')
+        
+        # Financial statements for detailed view
+        balance_sheet = stock.balance_sheet
+        cash_flow = stock.cashflow
+        
         return {
             'current_price': current_price,
             'total_revenue': total_revenue,
@@ -321,6 +437,13 @@ def fetch_stock_data(ticker: str) -> dict:
             'forward_pe': forward_pe,
             'sector': sector,
             'industry': industry,
+            # 52-week range
+            'fifty_two_week_low': fifty_two_week_low,
+            'fifty_two_week_high': fifty_two_week_high,
+            # Financial statements
+            'income_stmt': income_stmt,
+            'balance_sheet': balance_sheet,
+            'cash_flow': cash_flow,
             'success': True,
             'error': None
         }
@@ -331,7 +454,7 @@ def fetch_stock_data(ticker: str) -> dict:
         }
 
 def calculate_projections(data: dict, revenue_growth: float, net_margin: float) -> pd.DataFrame:
-    """Calculate 3-year projections."""
+    """Calculate 5-year projections."""
     current_price = data['current_price']
     revenue = data['total_revenue']
     shares = data['shares_outstanding']
@@ -339,6 +462,8 @@ def calculate_projections(data: dict, revenue_growth: float, net_margin: float) 
     eps_high = data['eps_high']
     historical_pe = data['historical_pe']
     fiscal_year = data.get('fiscal_year', 2024)
+    fifty_two_week_low = data.get('fifty_two_week_low')
+    fifty_two_week_high = data.get('fifty_two_week_high')
     
     # Calculate P/E bounds from analyst estimates
     pe_high = None
@@ -354,8 +479,8 @@ def calculate_projections(data: dict, revenue_growth: float, net_margin: float) 
         pe_high = historical_pe * 1.2
         using_fallback = True
     
-    # Build projection table - Years 0-3 (current + 3 future years)
-    num_years = 4
+    # Build projection table - Years 0-5 (current + 5 future years)
+    num_years = 6
     calendar_years = [fiscal_year + i for i in range(num_years)]
     projections = {
         'Year': calendar_years,
@@ -372,23 +497,35 @@ def calculate_projections(data: dict, revenue_growth: float, net_margin: float) 
     }
     
     prev_net_income = data['net_income']
+    base_net_income = data['net_income']
+    base_eps = data['current_eps']
     
     for idx in range(num_years):
         if idx == 0:
-            # Current year (Year 0)
+            # Current year (Year 0) - use 52-week low/high for share prices
             proj_revenue = revenue
             proj_net_income = data['net_income']
-            proj_eps = data['current_eps']
+            proj_eps = base_eps
             rev_growth = None
             ni_growth = None
             margin = data['current_margin']
-            price_low = current_price
-            price_high = current_price
+            price_low = fifty_two_week_low if fifty_two_week_low else current_price
+            price_high = fifty_two_week_high if fifty_two_week_high else current_price
         else:
             # Future years
             proj_revenue = revenue * ((1 + revenue_growth / 100) ** idx)
             proj_net_income = proj_revenue * (net_margin / 100)
-            proj_eps = proj_net_income / shares if shares else None
+            
+            # Grow EPS from current EPS using net income growth rate
+            # This avoids ADR/foreign stock share count mismatches
+            if base_net_income and base_net_income > 0 and base_eps:
+                ni_growth_multiplier = proj_net_income / base_net_income
+                proj_eps = base_eps * ni_growth_multiplier
+            elif shares:
+                proj_eps = proj_net_income / shares
+            else:
+                proj_eps = None
+            
             rev_growth = revenue_growth
             
             # Net Income Growth %
@@ -420,7 +557,7 @@ def calculate_projections(data: dict, revenue_growth: float, net_margin: float) 
         
         prev_net_income = proj_net_income
     
-    # Calculate CAGR for final year (Year 3)
+    # Calculate CAGR for final year (Year 5)
     cagr_low = None
     cagr_high = None
     final_idx = num_years - 1
@@ -482,14 +619,49 @@ def build_scenario_table(data: dict, revenue_growth: float, net_margin: float) -
 
 # --- TOP HEADER WITH SEARCH ---
 st.title("📈 Stock Valuation Projection Engine")
-st.markdown("*3-Year Forward-Estimate Model with Bull, Base & Bear Scenarios*")
+st.markdown("*5-Year Forward-Estimate Model with Bull, Base & Bear Scenarios*")
 
-# Search bar at the top with Fetch Data button
-col_search, col_fetch = st.columns([4, 1])
+# Search bar at the top with watchlist dropdown and Fetch Data button
+col_watchlist, col_search, col_fetch = st.columns([2, 3, 1])
+with col_watchlist:
+    selected_watchlist = st.selectbox(
+        "📋 Watchlist", 
+        options=WATCHLIST_STOCKS,
+        format_func=lambda x: "Select from watchlist..." if x == "" else x,
+        label_visibility="collapsed"
+    )
 with col_search:
-    ticker = st.text_input("🔍 Enter Stock Ticker", value="AVGO", placeholder="e.g., AAPL, MSFT, AVGO", label_visibility="collapsed")
+    # Use watchlist selection if available, otherwise allow custom input
+    default_ticker = selected_watchlist if selected_watchlist else "PLTR"
+    ticker = st.text_input("🔍 Enter Stock Ticker", value=default_ticker, placeholder="e.g., AAPL, MSFT, PLTR", label_visibility="collapsed")
 with col_fetch:
     fetch_clicked = st.button("Fetch Data", type="primary", use_container_width=True)
+
+# --- Earnings Alert Banner (shows if any watchlist stocks have earnings this week) ---
+@st.cache_data(ttl=3600)
+def get_upcoming_week_earnings():
+    """Fetch earnings happening in the next 7 days for watchlist stocks."""
+    from datetime import datetime, timedelta
+    today = datetime.now().date()
+    week_from_now = today + timedelta(days=7)
+    upcoming = []
+    
+    for stock_ticker in WATCHLIST_STOCKS[1:]:  # Skip empty string
+        events = fetch_calendar_events(stock_ticker)
+        for event_date, event_type, ticker in events:
+            if event_type == 'Earnings' and today <= event_date <= week_from_now:
+                upcoming.append((event_date, ticker))
+    
+    # Remove duplicates and sort
+    upcoming = list(set(upcoming))
+    upcoming.sort(key=lambda x: x[0])
+    return upcoming
+
+# Check for upcoming earnings and display banner
+upcoming_earnings = get_upcoming_week_earnings()
+if upcoming_earnings:
+    earnings_text = " | ".join([f"**{ticker}** ({date.strftime('%b %d')})" for date, ticker in upcoming_earnings])
+    st.info(f"📊 **Earnings This Week:** {earnings_text}")
 
 # Auto-fetch when ticker changes, on first load, or when button clicked
 if 'last_ticker' not in st.session_state:
@@ -511,9 +683,7 @@ if should_fetch or ticker_changed:
         st.session_state.last_ticker = ticker.upper()
         st.rerun()  # Rerun to apply new defaults
 
-# --- Sidebar with Calendar and News (Portfolio moved to right side) ---
-# Load portfolio from localStorage on first run
-load_portfolio_from_storage()
+# --- Sidebar with Calendar and News ---
 
 if 'stock_data' in st.session_state and st.session_state.stock_data.get('success'):
     news_data = st.session_state.stock_data.get('news', [])
@@ -525,33 +695,54 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
         st.header(f"📅 {st.session_state.ticker} Upcoming Events")
         
         has_events = False
+        from datetime import datetime
+        today = datetime.now().date()
         
-        # Display calendar events (earnings, dividends, etc.)
+        # Display calendar events (earnings, dividends, etc.) - only future dates
         if calendar_data is not None:
             if isinstance(calendar_data, dict):
                 # Earnings Date
                 if 'Earnings Date' in calendar_data:
                     earnings = calendar_data['Earnings Date']
                     if earnings:
-                        has_events = True
-                        if isinstance(earnings, list) and len(earnings) >= 2:
-                            st.markdown(f"📊 **Earnings:** {earnings[0].strftime('%b %d, %Y')} - {earnings[1].strftime('%b %d, %Y')}")
-                        elif isinstance(earnings, list) and len(earnings) == 1:
-                            st.markdown(f"📊 **Earnings:** {earnings[0].strftime('%b %d, %Y')}")
+                        # Filter to only future earnings dates
+                        if isinstance(earnings, list):
+                            future_earnings = []
+                            for e in earnings:
+                                try:
+                                    e_date = e.date() if hasattr(e, 'date') else e
+                                    if e_date >= today:
+                                        future_earnings.append(e)
+                                except:
+                                    pass
+                            if len(future_earnings) >= 2:
+                                has_events = True
+                                st.markdown(f"📊 **Earnings:** {future_earnings[0].strftime('%b %d, %Y')} - {future_earnings[1].strftime('%b %d, %Y')}")
+                            elif len(future_earnings) == 1:
+                                has_events = True
+                                st.markdown(f"📊 **Earnings:** {future_earnings[0].strftime('%b %d, %Y')}")
                 
-                # Dividend Date
+                # Dividend Date - only show if in the future
                 if 'Dividend Date' in calendar_data and calendar_data['Dividend Date']:
-                    has_events = True
                     div_date = calendar_data['Dividend Date']
-                    if hasattr(div_date, 'strftime'):
-                        st.markdown(f"💰 **Dividend Date:** {div_date.strftime('%b %d, %Y')}")
+                    try:
+                        d_date = div_date.date() if hasattr(div_date, 'date') else div_date
+                        if d_date >= today:
+                            has_events = True
+                            st.markdown(f"💰 **Dividend Date:** {div_date.strftime('%b %d, %Y')}")
+                    except:
+                        pass
                 
-                # Ex-Dividend Date
+                # Ex-Dividend Date - only show if in the future
                 if 'Ex-Dividend Date' in calendar_data and calendar_data['Ex-Dividend Date']:
-                    has_events = True
                     ex_div = calendar_data['Ex-Dividend Date']
-                    if hasattr(ex_div, 'strftime'):
-                        st.markdown(f"📆 **Ex-Dividend:** {ex_div.strftime('%b %d, %Y')}")
+                    try:
+                        ex_date = ex_div.date() if hasattr(ex_div, 'date') else ex_div
+                        if ex_date >= today:
+                            has_events = True
+                            st.markdown(f"📆 **Ex-Dividend:** {ex_div.strftime('%b %d, %Y')}")
+                    except:
+                        pass
         
         # Display earnings dates table
         if earnings_dates is not None and not earnings_dates.empty:
@@ -578,60 +769,178 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
                 title = content.get('title', article.get('title', 'No title'))
                 link = article.get('link', content.get('canonicalUrl', {}).get('url', '#'))
                 provider = content.get('provider', {}).get('displayName', '')
-                pub_date = content.get('pubDate', '')
+                pub_date = content.get('pubDate', article.get('providerPublishTime', ''))
                 
                 st.markdown(f"📄 **[{title}]({link})**")
-                if provider:
+                
+                # Format and display date and provider
+                date_str = ""
+                if pub_date:
+                    try:
+                        from datetime import datetime
+                        # Handle Unix timestamp
+                        if isinstance(pub_date, (int, float)):
+                            date_obj = datetime.fromtimestamp(pub_date)
+                            date_str = date_obj.strftime('%b %d, %Y')
+                        # Handle string date
+                        elif isinstance(pub_date, str):
+                            date_str = pub_date[:10] if len(pub_date) >= 10 else pub_date
+                    except:
+                        pass
+                
+                if provider and date_str:
+                    st.caption(f"🔗 {provider} • 📅 {date_str}")
+                elif provider:
                     st.caption(f"🔗 {provider}")
+                elif date_str:
+                    st.caption(f"📅 {date_str}")
                 st.markdown("---")
         else:
             st.info("No recent news available.")
 
-# --- Right Panel Portfolio (using expander at top right) ---
-# Create a container at the top for portfolio
-portfolio_container = st.container()
-with portfolio_container:
-    with st.expander("⭐ My Portfolio", expanded=True):
-        if st.session_state.portfolio:
-            # Display as a horizontal row of buttons
-            cols = st.columns(min(len(st.session_state.portfolio), 5))
-            for idx, p_ticker in enumerate(st.session_state.portfolio):
-                col_idx = idx % 5
-                with cols[col_idx]:
-                    if st.button(f"📈 {p_ticker}", key=f"load_{p_ticker}", use_container_width=True):
-                        # Clear scenario settings
-                        for key in ['bear_growth', 'bear_margin', 'base_growth', 'base_margin', 'bull_growth', 'bull_margin']:
-                            if key in st.session_state:
-                                del st.session_state[key]
-                        # Fetch fresh data for this stock
-                        st.session_state.stock_data = fetch_stock_data(p_ticker)
-                        st.session_state.ticker = p_ticker
-                        st.session_state.last_ticker = p_ticker
-                        st.rerun()
+# --- Watchlist Calendar Section ---
+with st.expander("📅 Watchlist Calendar", expanded=False):
+    if st.button("🔄 Load Watchlist Events", key="load_watchlist_calendar", use_container_width=True, help="View upcoming events for all watchlist stocks"):
+        st.session_state.show_watchlist_calendar = True
+    
+    if st.session_state.get('show_watchlist_calendar', False):
+        st.markdown("---")
+        
+        # Fetch events for all watchlist stocks
+        all_events = []
+        with st.spinner("Loading calendar events..."):
+            for stock_ticker in WATCHLIST_STOCKS[1:]:  # Skip empty string
+                events = fetch_calendar_events(stock_ticker)
+                all_events.extend(events)
+        
+        # Remove duplicates and sort by date
+        unique_events = list(set(all_events))
+        unique_events.sort(key=lambda x: x[0])
+        
+        if unique_events:
+            from collections import defaultdict
+            from datetime import datetime, timedelta
+            import calendar
             
-            # Remove and Export/Import row
-            remove_col, export_col, import_col = st.columns([2, 1, 1])
-            with remove_col:
-                remove_ticker = st.selectbox("Remove stock:", [""] + st.session_state.portfolio, key="remove_select", label_visibility="collapsed")
-                if remove_ticker:
-                    remove_from_portfolio(remove_ticker)
-                    st.rerun()
-            with export_col:
-                portfolio_json = json.dumps(st.session_state.portfolio, indent=2)
-                st.download_button("📥 Export", portfolio_json, "portfolio.json", "application/json", use_container_width=True)
-            with import_col:
-                uploaded = st.file_uploader("📤", type="json", label_visibility="collapsed", key="import_file")
-                if uploaded:
-                    try:
-                        imported = json.load(uploaded)
-                        if isinstance(imported, list):
-                            st.session_state.portfolio = imported
-                            save_portfolio_to_storage()
-                            st.rerun()
-                    except:
-                        st.error("Invalid")
+            # Group events by date
+            events_by_date = defaultdict(list)
+            for event_date, event_type, ticker in unique_events:
+                events_by_date[event_date].append((event_type, ticker))
+            
+            # Get date range for calendar (current month + next 2 months)
+            today = datetime.now().date()
+            
+            # Build calendar for 3 months
+            for month_offset in range(3):
+                # Calculate the month
+                month_date = today.replace(day=1)
+                for _ in range(month_offset):
+                    # Move to next month
+                    if month_date.month == 12:
+                        month_date = month_date.replace(year=month_date.year + 1, month=1)
+                    else:
+                        month_date = month_date.replace(month=month_date.month + 1)
+                
+                year = month_date.year
+                month = month_date.month
+                month_name = calendar.month_name[month]
+                
+                st.markdown(f"### {month_name} {year}")
+                
+                # Create calendar grid
+                cal = calendar.Calendar(firstweekday=6)  # Start on Sunday
+                month_days = cal.monthdayscalendar(year, month)
+                
+                # Header row
+                header_cols = st.columns(7)
+                for i, day_name in enumerate(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']):
+                    header_cols[i].markdown(f"**{day_name}**")
+                
+                # Calendar grid with scrollable container
+                for week in month_days:
+                    week_cols = st.columns(7)
+                    for i, day in enumerate(week):
+                        if day == 0:
+                            week_cols[i].markdown("")
+                        else:
+                            try:
+                                cell_date = datetime(year, month, day).date()
+                                events_today = events_by_date.get(cell_date, [])
+                                
+                                if events_today:
+                                    # Has events - highlight
+                                    event_text = f"**{day}**\n"
+                                    for event_type, ticker in events_today[:2]:  # Max 2 per cell
+                                        emoji = "📊" if event_type == "Earnings" else ("💰" if event_type == "Dividend" else "📆")
+                                        event_text += f"{emoji}{ticker}\n"
+                                    if len(events_today) > 2:
+                                        event_text += f"+{len(events_today)-2} more"
+                                    week_cols[i].markdown(event_text)
+                                elif cell_date == today:
+                                    # Today
+                                    week_cols[i].markdown(f"🔵 **{day}**")
+                                else:
+                                    week_cols[i].markdown(f"{day}")
+                            except:
+                                week_cols[i].markdown(f"{day}")
+                
+                st.markdown("---")
+            
+            # Legend
+            st.markdown("**Legend:** 📊 Earnings | 💰 Dividend | 📆 Ex-Dividend | 🔵 Today")
         else:
-            st.caption("No stocks saved. Click ☆ Save on a stock to add it to your portfolio.")
+            st.info("No upcoming events found for watchlist stocks.")
+        
+        if st.button("✕ Close", key="close_watchlist_calendar"):
+            st.session_state.show_watchlist_calendar = False
+            st.rerun()
+
+# --- Watchlist News Feed Expander ---
+with st.expander("📰 Watchlist News Feed (Last 48 Hours)", expanded=False):
+    if st.button("🔄 Load Latest News", key="refresh_watchlist_news", use_container_width=True):
+        st.session_state.watchlist_news_loaded = True
+    
+    if st.session_state.get('watchlist_news_loaded', False):
+        watchlist_news = fetch_watchlist_news()
+        
+        if watchlist_news:
+            from datetime import datetime
+            
+            # Calculate minutes ago for each article and sort by that
+            for article in watchlist_news:
+                time_diff = datetime.now() - article['timestamp']
+                article['minutes_ago'] = abs(int(time_diff.total_seconds() / 60))
+            
+            # Sort by minutes_ago (smallest = most recent first)
+            sorted_news = sorted(watchlist_news, key=lambda x: x['minutes_ago'])
+            
+            for article in sorted_news[:20]:  # Limit to 20 articles
+                ticker = article['ticker']
+                title = article['title']
+                link = article['link']
+                publisher = article.get('publisher', '')
+                total_minutes = article['minutes_ago']
+                
+                # Format time ago
+                if total_minutes < 60:
+                    time_str = f"{total_minutes}m ago"
+                elif total_minutes < 1440:  # Less than 24 hours
+                    hours = total_minutes // 60
+                    time_str = f"{hours}h ago"
+                else:
+                    days = total_minutes // 1440
+                    time_str = f"{days}d ago"
+                
+                # Display with publisher if available
+                if publisher:
+                    st.markdown(f"**[{ticker}]** [{title}]({link})")
+                    st.caption(f"🔗 {publisher} • ⏰ {time_str}")
+                else:
+                    st.markdown(f"**[{ticker}]** [{title}]({link}) • ⏰ {time_str}")
+        else:
+            st.info("No recent news found for watchlist stocks.")
+    else:
+        st.caption("Click 'Load Latest News' to fetch stories from all watchlist stocks.")
 
 # --- Main Content ---
 if 'stock_data' in st.session_state and st.session_state.stock_data.get('success'):
@@ -639,20 +948,73 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
     
     st.markdown("---")
     
-    # Company info header with Save to Portfolio button
-    header_col, save_col = st.columns([5, 1])
+    # Company info header with View Financials button
+    header_col, financials_col = st.columns([5, 1])
     with header_col:
         st.header(f"{data['company_name']} ({st.session_state.ticker})")
-    with save_col:
-        current_ticker = st.session_state.ticker
-        if is_in_portfolio(current_ticker):
-            if st.button("⭐ Saved", key="remove_portfolio", type="secondary", use_container_width=True, help="Click to remove from portfolio"):
-                remove_from_portfolio(current_ticker)
-                st.rerun()
-        else:
-            if st.button("☆ Save", key="add_portfolio", type="primary", use_container_width=True, help="Add to your portfolio"):
-                add_to_portfolio(current_ticker)
-                st.rerun()
+    with financials_col:
+        show_financials = st.button("📊 Financials", key="show_financials", use_container_width=True, help="View detailed financial statements")
+    
+    # Financials dialog/modal
+    if show_financials:
+        st.session_state.show_financials_dialog = True
+    
+    if st.session_state.get('show_financials_dialog', False):
+        with st.expander(f"📊 {data['company_name']} Financial Statements", expanded=True):
+            close_col1, close_col2 = st.columns([6, 1])
+            with close_col2:
+                if st.button("✕ Close", key="close_financials"):
+                    st.session_state.show_financials_dialog = False
+                    st.rerun()
+            
+            fin_tab1, fin_tab2, fin_tab3 = st.tabs(["📈 Income Statement", "📋 Balance Sheet", "💵 Cash Flow"])
+            
+            with fin_tab1:
+                income_stmt = data.get('income_stmt')
+                if income_stmt is not None and not income_stmt.empty:
+                    # Format large numbers for display
+                    formatted_income = income_stmt.copy()
+                    for col in formatted_income.columns:
+                        formatted_income[col] = formatted_income[col].apply(
+                            lambda x: f"${x/1e9:.2f}B" if pd.notna(x) and abs(x) >= 1e9 else 
+                                     (f"${x/1e6:.2f}M" if pd.notna(x) and abs(x) >= 1e6 else 
+                                     (f"${x:,.0f}" if pd.notna(x) else "—"))
+                        )
+                    # Rename columns to years
+                    formatted_income.columns = [col.strftime('%Y') if hasattr(col, 'strftime') else str(col) for col in formatted_income.columns]
+                    st.dataframe(formatted_income, use_container_width=True, height=400)
+                else:
+                    st.info("Income statement data not available")
+            
+            with fin_tab2:
+                balance_sheet = data.get('balance_sheet')
+                if balance_sheet is not None and not balance_sheet.empty:
+                    formatted_bs = balance_sheet.copy()
+                    for col in formatted_bs.columns:
+                        formatted_bs[col] = formatted_bs[col].apply(
+                            lambda x: f"${x/1e9:.2f}B" if pd.notna(x) and abs(x) >= 1e9 else 
+                                     (f"${x/1e6:.2f}M" if pd.notna(x) and abs(x) >= 1e6 else 
+                                     (f"${x:,.0f}" if pd.notna(x) else "—"))
+                        )
+                    formatted_bs.columns = [col.strftime('%Y') if hasattr(col, 'strftime') else str(col) for col in formatted_bs.columns]
+                    st.dataframe(formatted_bs, use_container_width=True, height=400)
+                else:
+                    st.info("Balance sheet data not available")
+            
+            with fin_tab3:
+                cash_flow = data.get('cash_flow')
+                if cash_flow is not None and not cash_flow.empty:
+                    formatted_cf = cash_flow.copy()
+                    for col in formatted_cf.columns:
+                        formatted_cf[col] = formatted_cf[col].apply(
+                            lambda x: f"${x/1e9:.2f}B" if pd.notna(x) and abs(x) >= 1e9 else 
+                                     (f"${x/1e6:.2f}M" if pd.notna(x) and abs(x) >= 1e6 else 
+                                     (f"${x:,.0f}" if pd.notna(x) else "—"))
+                        )
+                    formatted_cf.columns = [col.strftime('%Y') if hasattr(col, 'strftime') else str(col) for col in formatted_cf.columns]
+                    st.dataframe(formatted_cf, use_container_width=True, height=400)
+                else:
+                    st.info("Cash flow data not available")
     
     # Current metrics
     m1, m2, m3, m4, m5 = st.columns(5)
@@ -818,7 +1180,7 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
     st.markdown("---")
     
     # --- THREE SCENARIO TABLES ---
-    st.subheader("📊 3-Year Projection Tables")
+    st.subheader("📊 5-Year Projection Tables")
     
     # Metric explanations expander
     with st.expander("ℹ️ Metric Definitions (click to expand)"):
