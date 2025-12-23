@@ -2,6 +2,8 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import json
+from streamlit_js_eval import streamlit_js_eval
 
 st.set_page_config(page_title="Stock Valuation Projection Engine", layout="wide")
 
@@ -79,6 +81,57 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
+
+# --- Portfolio Functions (Local Storage) ---
+
+def init_portfolio():
+    """Initialize portfolio in session state."""
+    if 'portfolio' not in st.session_state:
+        st.session_state.portfolio = []
+    if 'portfolio_loaded' not in st.session_state:
+        st.session_state.portfolio_loaded = False
+
+def load_portfolio_from_storage():
+    """Load portfolio from browser localStorage."""
+    if not st.session_state.portfolio_loaded:
+        try:
+            result = streamlit_js_eval(js_expressions="localStorage.getItem('stock_portfolio')", key="load_portfolio")
+            if result:
+                st.session_state.portfolio = json.loads(result)
+            st.session_state.portfolio_loaded = True
+        except:
+            pass
+
+def save_portfolio_to_storage():
+    """Save portfolio to browser localStorage."""
+    try:
+        portfolio_json = json.dumps(st.session_state.portfolio)
+        streamlit_js_eval(js_expressions=f"localStorage.setItem('stock_portfolio', '{portfolio_json}')", key="save_portfolio_" + str(len(st.session_state.portfolio)))
+    except:
+        pass
+
+def add_to_portfolio(ticker: str):
+    """Add a stock to portfolio."""
+    if ticker and ticker not in st.session_state.portfolio:
+        st.session_state.portfolio.append(ticker)
+        save_portfolio_to_storage()
+        return True
+    return False
+
+def remove_from_portfolio(ticker: str):
+    """Remove a stock from portfolio."""
+    if ticker in st.session_state.portfolio:
+        st.session_state.portfolio.remove(ticker)
+        save_portfolio_to_storage()
+        return True
+    return False
+
+def is_in_portfolio(ticker: str) -> bool:
+    """Check if stock is in portfolio."""
+    return ticker in st.session_state.portfolio
+
+# Initialize portfolio
+init_portfolio()
 
 # --- Helper Functions ---
 
@@ -442,7 +495,11 @@ with col_fetch:
 if 'last_ticker' not in st.session_state:
     st.session_state.last_ticker = None
 
-if fetch_clicked or ticker.upper() != st.session_state.last_ticker or 'stock_data' not in st.session_state:
+# Check if we need to fetch new data
+should_fetch = fetch_clicked or 'stock_data' not in st.session_state
+ticker_changed = ticker.upper() != st.session_state.last_ticker and ticker.strip() != ""
+
+if should_fetch or ticker_changed:
     # Clear scenario settings when ticker changes so they reset to new stock's defaults
     for key in ['bear_growth', 'bear_margin', 'base_growth', 'base_margin', 'bull_growth', 'bull_margin']:
         if key in st.session_state:
@@ -454,7 +511,10 @@ if fetch_clicked or ticker.upper() != st.session_state.last_ticker or 'stock_dat
         st.session_state.last_ticker = ticker.upper()
         st.rerun()  # Rerun to apply new defaults
 
-# --- Sidebar with Calendar and News ---
+# --- Sidebar with Calendar and News (Portfolio moved to right side) ---
+# Load portfolio from localStorage on first run
+load_portfolio_from_storage()
+
 if 'stock_data' in st.session_state and st.session_state.stock_data.get('success'):
     news_data = st.session_state.stock_data.get('news', [])
     calendar_data = st.session_state.stock_data.get('calendar')
@@ -527,14 +587,72 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
         else:
             st.info("No recent news available.")
 
-# --- Settings Row ---
+# --- Right Panel Portfolio (using expander at top right) ---
+# Create a container at the top for portfolio
+portfolio_container = st.container()
+with portfolio_container:
+    with st.expander("⭐ My Portfolio", expanded=True):
+        if st.session_state.portfolio:
+            # Display as a horizontal row of buttons
+            cols = st.columns(min(len(st.session_state.portfolio), 5))
+            for idx, p_ticker in enumerate(st.session_state.portfolio):
+                col_idx = idx % 5
+                with cols[col_idx]:
+                    if st.button(f"📈 {p_ticker}", key=f"load_{p_ticker}", use_container_width=True):
+                        # Clear scenario settings
+                        for key in ['bear_growth', 'bear_margin', 'base_growth', 'base_margin', 'bull_growth', 'bull_margin']:
+                            if key in st.session_state:
+                                del st.session_state[key]
+                        # Fetch fresh data for this stock
+                        st.session_state.stock_data = fetch_stock_data(p_ticker)
+                        st.session_state.ticker = p_ticker
+                        st.session_state.last_ticker = p_ticker
+                        st.rerun()
+            
+            # Remove and Export/Import row
+            remove_col, export_col, import_col = st.columns([2, 1, 1])
+            with remove_col:
+                remove_ticker = st.selectbox("Remove stock:", [""] + st.session_state.portfolio, key="remove_select", label_visibility="collapsed")
+                if remove_ticker:
+                    remove_from_portfolio(remove_ticker)
+                    st.rerun()
+            with export_col:
+                portfolio_json = json.dumps(st.session_state.portfolio, indent=2)
+                st.download_button("📥 Export", portfolio_json, "portfolio.json", "application/json", use_container_width=True)
+            with import_col:
+                uploaded = st.file_uploader("📤", type="json", label_visibility="collapsed", key="import_file")
+                if uploaded:
+                    try:
+                        imported = json.load(uploaded)
+                        if isinstance(imported, list):
+                            st.session_state.portfolio = imported
+                            save_portfolio_to_storage()
+                            st.rerun()
+                    except:
+                        st.error("Invalid")
+        else:
+            st.caption("No stocks saved. Click ☆ Save on a stock to add it to your portfolio.")
+
+# --- Main Content ---
 if 'stock_data' in st.session_state and st.session_state.stock_data.get('success'):
     data = st.session_state.stock_data
     
     st.markdown("---")
     
-    # Company info header
-    st.header(f"{data['company_name']} ({st.session_state.ticker})")
+    # Company info header with Save to Portfolio button
+    header_col, save_col = st.columns([5, 1])
+    with header_col:
+        st.header(f"{data['company_name']} ({st.session_state.ticker})")
+    with save_col:
+        current_ticker = st.session_state.ticker
+        if is_in_portfolio(current_ticker):
+            if st.button("⭐ Saved", key="remove_portfolio", type="secondary", use_container_width=True, help="Click to remove from portfolio"):
+                remove_from_portfolio(current_ticker)
+                st.rerun()
+        else:
+            if st.button("☆ Save", key="add_portfolio", type="primary", use_container_width=True, help="Add to your portfolio"):
+                add_to_portfolio(current_ticker)
+                st.rerun()
     
     # Current metrics
     m1, m2, m3, m4, m5 = st.columns(5)
@@ -671,20 +789,23 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
     
     settings_col1, settings_col2, settings_col3, settings_col4 = st.columns(4)
     
+    # Use ticker in key to force reset when ticker changes
+    ticker_key = st.session_state.ticker
+    
     with settings_col1:
         st.markdown("**🐻 Bear Case**")
-        bear_growth = st.number_input("Revenue Growth %", min_value=-20.0, max_value=100.0, value=bear_growth_val, step=1.0, key="bear_growth", help="Annual revenue growth rate for pessimistic scenario. Default is 0.5x current growth.")
-        bear_margin = st.number_input("Net Margin %", min_value=1.0, max_value=60.0, value=bear_margin_val, step=0.5, key="bear_margin", help="Net income as % of revenue for bear case. Default is 0.9x current margin.")
+        bear_growth = st.number_input("Revenue Growth %", min_value=-20.0, max_value=100.0, value=bear_growth_val, step=1.0, key=f"bear_growth_{ticker_key}", help="Annual revenue growth rate for pessimistic scenario. Default is 0.5x current growth.")
+        bear_margin = st.number_input("Net Margin %", min_value=1.0, max_value=60.0, value=bear_margin_val, step=0.5, key=f"bear_margin_{ticker_key}", help="Net income as % of revenue for bear case. Default is 0.9x current margin.")
     
     with settings_col2:
         st.markdown("**📊 Base Case**")
-        base_growth = st.number_input("Revenue Growth %", min_value=-20.0, max_value=100.0, value=base_growth_val, step=1.0, key="base_growth", help="Annual revenue growth rate for base scenario. Default is current growth rate.")
-        base_margin = st.number_input("Net Margin %", min_value=1.0, max_value=60.0, value=base_margin_val, step=0.5, key="base_margin", help="Net income as % of revenue for base case. Default is current margin.")
+        base_growth = st.number_input("Revenue Growth %", min_value=-20.0, max_value=100.0, value=base_growth_val, step=1.0, key=f"base_growth_{ticker_key}", help="Annual revenue growth rate for base scenario. Default is current growth rate.")
+        base_margin = st.number_input("Net Margin %", min_value=1.0, max_value=60.0, value=base_margin_val, step=0.5, key=f"base_margin_{ticker_key}", help="Net income as % of revenue for base case. Default is current margin.")
     
     with settings_col3:
         st.markdown("**🐂 Bull Case**")
-        bull_growth = st.number_input("Revenue Growth %", min_value=-20.0, max_value=100.0, value=bull_growth_val, step=1.0, key="bull_growth", help="Annual revenue growth rate for optimistic scenario. Default is 1.5x current growth.")
-        bull_margin = st.number_input("Net Margin %", min_value=1.0, max_value=60.0, value=bull_margin_val, step=0.5, key="bull_margin", help="Net income as % of revenue for bull case. Default is 1.1x current margin.")
+        bull_growth = st.number_input("Revenue Growth %", min_value=-20.0, max_value=100.0, value=bull_growth_val, step=1.0, key=f"bull_growth_{ticker_key}", help="Annual revenue growth rate for optimistic scenario. Default is 1.5x current growth.")
+        bull_margin = st.number_input("Net Margin %", min_value=1.0, max_value=60.0, value=bull_margin_val, step=0.5, key=f"bull_margin_{ticker_key}", help="Net income as % of revenue for bull case. Default is 1.1x current margin.")
     
     with settings_col4:
         st.markdown("**📐 P/E Multiples**")
