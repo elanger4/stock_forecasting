@@ -814,6 +814,9 @@ def fetch_stock_data(ticker: str) -> dict:
             'ebitda': ebitda,
             'total_assets': total_assets,
             'retained_earnings': retained_earnings,
+            # Graham Value data
+            'book_value': book_value,
+            'total_liabilities': info.get('totalLiab') or info.get('totalDebt', 0),
             'success': True,
             'error': None
         }
@@ -1090,6 +1093,77 @@ def calculate_financial_health(data: dict) -> dict:
                 results['health_status'] = 'Distressed'
     
     return results
+
+
+def calculate_graham_value(data: dict) -> dict:
+    """
+    Calculate Graham Value metrics for value investing analysis.
+    
+    Metrics:
+    1. Graham Number - √(22.5 × EPS × Book Value per Share)
+    2. NCAV per Share - (Current Assets - Total Liabilities) / Shares
+    3. P/E × P/B - Combined valuation ratio (Graham wanted < 22.5)
+    4. Earnings Yield - EPS / Price (compare to bond yields)
+    """
+    results = {
+        'graham_number': None,
+        'ncav_per_share': None,
+        'pe_times_pb': None,
+        'earnings_yield': None,
+        'graham_margin': None,  # % difference from Graham Number
+        'ncav_margin': None,    # % difference from NCAV
+        'is_undervalued': False,
+        'is_net_net': False,    # Trading below NCAV
+    }
+    
+    current_price = data.get('current_price')
+    eps = data.get('current_eps')
+    book_value = data.get('book_value')  # Book value per share
+    shares = data.get('shares_outstanding')
+    current_assets = data.get('current_assets')
+    total_liabilities = data.get('total_liabilities')
+    trailing_pe = data.get('trailing_pe')
+    p_book = data.get('p_book')
+    
+    if not current_price or current_price <= 0:
+        return results
+    
+    # 1. Graham Number: √(22.5 × EPS × BVPS)
+    # Only valid for positive EPS and book value
+    if eps and eps > 0 and book_value and book_value > 0:
+        graham_number = (22.5 * eps * book_value) ** 0.5
+        results['graham_number'] = graham_number
+        
+        # Margin vs current price (positive = undervalued)
+        results['graham_margin'] = ((graham_number / current_price) - 1) * 100
+        
+        if current_price < graham_number:
+            results['is_undervalued'] = True
+    
+    # 2. NCAV per Share: (Current Assets - Total Liabilities) / Shares
+    if current_assets and total_liabilities is not None and shares and shares > 0:
+        ncav = current_assets - total_liabilities
+        ncav_per_share = ncav / shares
+        results['ncav_per_share'] = ncav_per_share
+        
+        # Margin vs current price
+        if ncav_per_share > 0:
+            results['ncav_margin'] = ((ncav_per_share / current_price) - 1) * 100
+        
+        # Net-net: trading below NCAV (rare bargain)
+        if ncav_per_share > 0 and current_price < ncav_per_share:
+            results['is_net_net'] = True
+    
+    # 3. P/E × P/B (Graham wanted < 22.5)
+    if trailing_pe and trailing_pe > 0 and p_book and p_book > 0:
+        results['pe_times_pb'] = trailing_pe * p_book
+    
+    # 4. Earnings Yield (inverse of P/E, as percentage)
+    if eps and current_price > 0:
+        results['earnings_yield'] = (eps / current_price) * 100
+    
+    return results
+
 
 def calculate_projections(data: dict, revenue_growth: float, net_margin: float) -> pd.DataFrame:
     """Calculate 5-year projections."""
@@ -2079,16 +2153,25 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
                 label,
                 f"${intrinsic_value:.2f}" if intrinsic_value > 0 else f"${intrinsic_value:.2f}",
                 delta=f"{upside_pct:+.1f}% vs current",
-                delta_color="normal" if upside_pct > 0 else "inverse",
+                # Use "normal" so positive upside = green, negative upside = red
+                delta_color="normal",
                 help="Intrinsic value per share based on Discounted Cash Flow analysis. Compares projected future cash flows discounted to present value."
             )
         with dcf_cols[1]:
             # Margin of safety - positive means stock is undervalued
-            safety_color = "normal" if margin_of_safety > 0 else "inverse"
+            if margin_of_safety > 15:
+                safety_status = "Undervalued"
+                safety_color = "normal"
+            elif margin_of_safety > -15:
+                safety_status = "Fair Value"
+                safety_color = "off"
+            else:
+                safety_status = "Overvalued"
+                safety_color = "inverse"
             st.metric(
                 "Margin of Safety",
                 f"{margin_of_safety:.1f}%",
-                delta="Undervalued" if margin_of_safety > 15 else ("Fair Value" if margin_of_safety > -15 else "Overvalued"),
+                delta=safety_status,
                 delta_color=safety_color,
                 help="Margin of Safety = (Intrinsic Value - Price) / Intrinsic Value. Positive means stock trades below fair value. >15% is typically considered a good margin."
             )
@@ -2264,6 +2347,122 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
                 """)
     else:
         st.info("💡 Financial health data not available for this stock.")
+    
+    # Graham Value Analysis Section (compact, integrated with existing flow)
+    graham = calculate_graham_value(data)
+    
+    if graham.get('graham_number') or graham.get('ncav_per_share') or graham.get('pe_times_pb'):
+        st.markdown("---")
+        st.subheader("📖 Graham Value Analysis")
+        
+        graham_cols = st.columns(4)
+        
+        with graham_cols[0]:
+            gn = graham.get('graham_number')
+            gn_margin = graham.get('graham_margin')
+            if gn:
+                gn_display = f"${gn:.2f}"
+                if gn_margin is not None:
+                    margin_text = f"{gn_margin:+.1f}% vs price"
+                    # Use "normal" so positive margin = green, negative margin = red
+                    delta_color = "normal"
+                else:
+                    margin_text = ""
+                    delta_color = "off"
+            else:
+                gn_display = "N/A"
+                margin_text = "Requires positive EPS & book value"
+                delta_color = "off"
+            st.metric(
+                "Graham Number",
+                gn_display,
+                delta=margin_text,
+                delta_color=delta_color,
+                help="Fair value estimate: √(22.5 × EPS × Book Value). If price < Graham Number, stock may be undervalued."
+            )
+        
+        with graham_cols[1]:
+            ncav = graham.get('ncav_per_share')
+            ncav_margin = graham.get('ncav_margin')
+            if ncav is not None:
+                if ncav > 0:
+                    ncav_display = f"${ncav:.2f}"
+                    if ncav_margin is not None:
+                        margin_text = f"{ncav_margin:+.1f}% vs price"
+                        # Use "normal" so positive margin = green, negative margin = red
+                        delta_color = "normal"
+                    else:
+                        margin_text = ""
+                        delta_color = "off"
+                else:
+                    ncav_display = f"${ncav:.2f}"
+                    margin_text = "Negative (liabilities > current assets)"
+                    delta_color = "off"
+            else:
+                ncav_display = "N/A"
+                margin_text = ""
+                delta_color = "off"
+            st.metric(
+                "NCAV/Share",
+                ncav_display,
+                delta=margin_text,
+                delta_color=delta_color,
+                help="Net Current Asset Value per share: (Current Assets - Total Liabilities) / Shares. If price < NCAV, it's a 'net-net' bargain."
+            )
+        
+        with graham_cols[2]:
+            pe_pb = graham.get('pe_times_pb')
+            if pe_pb is not None:
+                pe_pb_display = f"{pe_pb:.1f}"
+                if pe_pb < 22.5:
+                    status = "Passes Graham test"
+                    delta_color = "normal"
+                else:
+                    status = "Exceeds 22.5 limit"
+                    delta_color = "inverse"
+            else:
+                pe_pb_display = "N/A"
+                status = ""
+                delta_color = "off"
+            st.metric(
+                "P/E × P/B",
+                pe_pb_display,
+                delta=status,
+                delta_color=delta_color,
+                help="Graham's combined ratio. He required P/E × P/B < 22.5 for defensive investors."
+            )
+        
+        with graham_cols[3]:
+            ey = graham.get('earnings_yield')
+            if ey is not None:
+                ey_display = f"{ey:.1f}%"
+                # Compare to approximate bond yield (use 4.5% as reference)
+                if ey > 6:
+                    status = "Attractive vs bonds"
+                    delta_color = "normal"
+                elif ey > 4:
+                    status = "Competitive"
+                    delta_color = "off"
+                else:
+                    status = "Low yield"
+                    delta_color = "inverse"
+            else:
+                ey_display = "N/A"
+                status = ""
+                delta_color = "off"
+            st.metric(
+                "Earnings Yield",
+                ey_display,
+                delta=status,
+                delta_color=delta_color,
+                help="EPS / Price (inverse of P/E). Compare to bond yields to assess relative value. Higher is better."
+            )
+        
+        # Special callouts for significant findings
+        if graham.get('is_net_net'):
+            st.success("🎯 **Net-Net Bargain**: This stock trades below its Net Current Asset Value — a rare Graham-style deep value opportunity.")
+        elif graham.get('is_undervalued') and graham.get('pe_times_pb') and graham['pe_times_pb'] < 22.5:
+            st.info("✅ **Graham Criteria Met**: Price below Graham Number and P/E × P/B < 22.5")
     
     st.markdown("---")
     
