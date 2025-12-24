@@ -61,13 +61,15 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- Page Navigation ---
-nav_col1, nav_col2, nav_col3, nav_col4 = st.columns([1, 1, 1, 3])
+nav_col1, nav_col2, nav_col3, nav_col4, nav_col5 = st.columns([1, 1, 1, 1, 2])
 with nav_col1:
     st.page_link("app.py", label="👉 Stock Analysis")
 with nav_col2:
-    st.page_link("pages/1_Watchlist_Comparison.py", label="👉 Watchlist Comparison")
+    st.page_link("pages/1_Watchlist_Comparison.py", label="👉 Watchlist")
 with nav_col3:
     st.markdown("**🎲 Monte Carlo** *(current)*")
+with nav_col4:
+    st.page_link("pages/3_Cross_Asset_Dashboard.py", label="👉 Cross-Asset")
 
 st.markdown("---")
 
