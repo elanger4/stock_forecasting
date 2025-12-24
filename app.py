@@ -558,6 +558,48 @@ def fetch_stock_data(ticker: str) -> dict:
         total_debt = info.get('totalDebt', 0) or 0
         total_cash = info.get('totalCash', 0) or 0
         
+        # Financial Health data - try info first, then fall back to balance sheet
+        total_stockholder_equity = info.get('totalStockholderEquity')
+        current_assets = info.get('totalCurrentAssets')
+        current_liabilities = info.get('totalCurrentLiabilities')
+        ebitda = info.get('ebitda')
+        total_assets = info.get('totalAssets')
+        retained_earnings = info.get('retainedEarnings')
+        
+        # Fall back to balance sheet if info doesn't have the data
+        if balance_sheet is not None and not balance_sheet.empty:
+            try:
+                # Get most recent column (latest fiscal year)
+                latest_col = balance_sheet.columns[0]
+                
+                if total_stockholder_equity is None:
+                    for key in ['Stockholders Equity', 'Total Stockholders Equity', 'Total Equity Gross Minority Interest', 'Common Stock Equity']:
+                        if key in balance_sheet.index:
+                            total_stockholder_equity = balance_sheet.loc[key, latest_col]
+                            break
+                
+                if current_assets is None:
+                    if 'Current Assets' in balance_sheet.index:
+                        current_assets = balance_sheet.loc['Current Assets', latest_col]
+                    elif 'Total Current Assets' in balance_sheet.index:
+                        current_assets = balance_sheet.loc['Total Current Assets', latest_col]
+                
+                if current_liabilities is None:
+                    if 'Current Liabilities' in balance_sheet.index:
+                        current_liabilities = balance_sheet.loc['Current Liabilities', latest_col]
+                    elif 'Total Current Liabilities' in balance_sheet.index:
+                        current_liabilities = balance_sheet.loc['Total Current Liabilities', latest_col]
+                
+                if total_assets is None:
+                    if 'Total Assets' in balance_sheet.index:
+                        total_assets = balance_sheet.loc['Total Assets', latest_col]
+                
+                if retained_earnings is None:
+                    if 'Retained Earnings' in balance_sheet.index:
+                        retained_earnings = balance_sheet.loc['Retained Earnings', latest_col]
+            except Exception:
+                pass
+        
         return {
             'current_price': current_price,
             'total_revenue': total_revenue,
@@ -615,6 +657,13 @@ def fetch_stock_data(ticker: str) -> dict:
             'operating_cash_flow': operating_cash_flow,
             'total_debt': total_debt,
             'total_cash': total_cash,
+            # Financial Health data
+            'total_stockholder_equity': total_stockholder_equity,
+            'current_assets': current_assets,
+            'current_liabilities': current_liabilities,
+            'ebitda': ebitda,
+            'total_assets': total_assets,
+            'retained_earnings': retained_earnings,
             'success': True,
             'error': None
         }
@@ -711,6 +760,186 @@ def calculate_dcf(
         'projected_fcfs': projected_fcfs,
         'error': None
     }
+
+def calculate_financial_health(data: dict) -> dict:
+    """
+    Calculate Financial Health Score based on key financial ratios.
+    
+    Components:
+    1. Debt-to-Equity Ratio - Lower is better
+    2. Current Ratio - Measures short-term liquidity (>1.5 is healthy)
+    3. Interest Coverage Ratio - Ability to pay interest (higher is better)
+    4. Altman Z-Score - Bankruptcy risk predictor
+    
+    Returns dict with individual metrics and overall letter grade.
+    """
+    results = {
+        'debt_to_equity': None,
+        'current_ratio': None,
+        'interest_coverage': None,
+        'altman_z': None,
+        'overall_score': None,
+        'letter_grade': None,
+        'health_status': None,
+        'component_scores': {}
+    }
+    
+    # Extract data
+    total_debt = data.get('total_debt', 0) or 0
+    total_equity = data.get('total_stockholder_equity')
+    current_assets = data.get('current_assets')
+    current_liabilities = data.get('current_liabilities')
+    ebitda = data.get('ebitda')
+    total_assets = data.get('total_assets')
+    total_revenue = data.get('total_revenue')
+    retained_earnings = data.get('retained_earnings')
+    market_cap = data.get('market_cap')
+    net_income = data.get('net_income')
+    
+    component_scores = []
+    
+    # 1. Debt-to-Equity Ratio (lower is better)
+    if total_equity and total_equity > 0:
+        debt_to_equity = total_debt / total_equity
+        results['debt_to_equity'] = debt_to_equity
+        # Score: 0 D/E = 100, 0.5 D/E = 80, 1.0 D/E = 60, 2.0 D/E = 40, 3+ D/E = 20
+        if debt_to_equity <= 0.3:
+            de_score = 100
+        elif debt_to_equity <= 0.5:
+            de_score = 90
+        elif debt_to_equity <= 1.0:
+            de_score = 75
+        elif debt_to_equity <= 2.0:
+            de_score = 55
+        elif debt_to_equity <= 3.0:
+            de_score = 35
+        else:
+            de_score = 20
+        results['component_scores']['debt_to_equity'] = de_score
+        component_scores.append(de_score)
+    
+    # 2. Current Ratio (higher is better, but too high can indicate inefficiency)
+    if current_assets and current_liabilities and current_liabilities > 0:
+        current_ratio = current_assets / current_liabilities
+        results['current_ratio'] = current_ratio
+        # Score: <1.0 = 30, 1.0-1.5 = 60, 1.5-2.5 = 90, 2.5-3.5 = 80, >3.5 = 70
+        if current_ratio < 1.0:
+            cr_score = 30
+        elif current_ratio < 1.5:
+            cr_score = 60
+        elif current_ratio <= 2.5:
+            cr_score = 95
+        elif current_ratio <= 3.5:
+            cr_score = 80
+        else:
+            cr_score = 70  # Too much idle capital
+        results['component_scores']['current_ratio'] = cr_score
+        component_scores.append(cr_score)
+    
+    # 3. Interest Coverage Ratio (EBITDA / Interest Expense approximation)
+    # We'll estimate interest expense from debt * average rate (~5%)
+    if ebitda and total_debt and total_debt > 0:
+        estimated_interest = total_debt * 0.05  # Assume 5% average interest rate
+        interest_coverage = ebitda / estimated_interest if estimated_interest > 0 else 999
+        results['interest_coverage'] = interest_coverage
+        # Score: <1 = 10, 1-2 = 40, 2-4 = 60, 4-8 = 80, >8 = 95
+        if interest_coverage < 1:
+            ic_score = 10
+        elif interest_coverage < 2:
+            ic_score = 40
+        elif interest_coverage < 4:
+            ic_score = 60
+        elif interest_coverage < 8:
+            ic_score = 80
+        else:
+            ic_score = 95
+        results['component_scores']['interest_coverage'] = ic_score
+        component_scores.append(ic_score)
+    elif ebitda and (total_debt == 0 or total_debt is None):
+        # No debt = excellent interest coverage
+        results['interest_coverage'] = 999
+        results['component_scores']['interest_coverage'] = 100
+        component_scores.append(100)
+    
+    # 4. Altman Z-Score (for public companies)
+    # Z = 1.2*A + 1.4*B + 3.3*C + 0.6*D + 1.0*E
+    # A = Working Capital / Total Assets
+    # B = Retained Earnings / Total Assets
+    # C = EBIT / Total Assets (we'll use EBITDA as proxy)
+    # D = Market Cap / Total Liabilities
+    # E = Sales / Total Assets
+    if total_assets and total_assets > 0:
+        working_capital = (current_assets or 0) - (current_liabilities or 0)
+        total_liabilities = total_assets - (total_equity or 0)
+        
+        A = working_capital / total_assets if total_assets else 0
+        B = (retained_earnings or 0) / total_assets if total_assets else 0
+        C = (ebitda or 0) / total_assets if total_assets else 0
+        D = (market_cap or 0) / total_liabilities if total_liabilities and total_liabilities > 0 else 5
+        E = (total_revenue or 0) / total_assets if total_assets else 0
+        
+        altman_z = 1.2 * A + 1.4 * B + 3.3 * C + 0.6 * D + 1.0 * E
+        results['altman_z'] = altman_z
+        
+        # Score: <1.1 = 10 (distress), 1.1-1.8 = 35, 1.8-2.7 = 55, 2.7-3.0 = 75, >3.0 = 95 (safe)
+        if altman_z < 1.1:
+            az_score = 10
+        elif altman_z < 1.8:
+            az_score = 35
+        elif altman_z < 2.7:
+            az_score = 55
+        elif altman_z < 3.0:
+            az_score = 75
+        else:
+            az_score = 95
+        results['component_scores']['altman_z'] = az_score
+        component_scores.append(az_score)
+    
+    # Calculate overall score (weighted average)
+    if component_scores:
+        # Weight: D/E 25%, Current Ratio 20%, Interest Coverage 25%, Altman Z 30%
+        weights = {
+            'debt_to_equity': 0.25,
+            'current_ratio': 0.20,
+            'interest_coverage': 0.25,
+            'altman_z': 0.30
+        }
+        
+        weighted_sum = 0
+        weight_total = 0
+        for key, score in results['component_scores'].items():
+            if key in weights:
+                weighted_sum += score * weights[key]
+                weight_total += weights[key]
+        
+        if weight_total > 0:
+            overall_score = weighted_sum / weight_total
+            results['overall_score'] = overall_score
+            
+            # Convert to letter grade
+            if overall_score >= 90:
+                results['letter_grade'] = 'A'
+                results['health_status'] = 'Excellent'
+            elif overall_score >= 80:
+                results['letter_grade'] = 'B+'
+                results['health_status'] = 'Very Good'
+            elif overall_score >= 70:
+                results['letter_grade'] = 'B'
+                results['health_status'] = 'Good'
+            elif overall_score >= 60:
+                results['letter_grade'] = 'C+'
+                results['health_status'] = 'Fair'
+            elif overall_score >= 50:
+                results['letter_grade'] = 'C'
+                results['health_status'] = 'Below Average'
+            elif overall_score >= 40:
+                results['letter_grade'] = 'D'
+                results['health_status'] = 'Poor'
+            else:
+                results['letter_grade'] = 'F'
+                results['health_status'] = 'Distressed'
+    
+    return results
 
 def calculate_projections(data: dict, revenue_growth: float, net_margin: float) -> pd.DataFrame:
     """Calculate 5-year projections."""
@@ -1580,8 +1809,19 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
             with insider_tab1:
                 insider_transactions = data.get('insider_transactions')
                 if insider_transactions is not None and not insider_transactions.empty:
+                    # Toggle to filter only buy transactions
+                    show_buys_only = st.toggle("🟢 Show Buy Transactions Only", value=False, key="insider_buys_only")
+                    
+                    # Filter if toggle is on
+                    if show_buys_only and 'Text' in insider_transactions.columns:
+                        filtered_trans = insider_transactions[
+                            insider_transactions['Text'].str.contains('Buy|Purchase|Acquisition', case=False, na=False)
+                        ].copy()
+                    else:
+                        filtered_trans = insider_transactions.copy()
+                    
                     # Format the dataframe
-                    formatted_trans = insider_transactions.copy()
+                    formatted_trans = filtered_trans.copy()
                     
                     # Format value/shares columns if they exist
                     if 'Value' in formatted_trans.columns:
@@ -1593,6 +1833,10 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
                         formatted_trans['Shares'] = formatted_trans['Shares'].apply(
                             lambda x: f"{x:,.0f}" if pd.notna(x) else "—"
                         )
+                    
+                    # Show filtered count if filter is active
+                    if show_buys_only:
+                        st.caption(f"Showing {len(formatted_trans)} buy transaction(s)")
                     
                     # Color code buys vs sells
                     st.dataframe(formatted_trans, use_container_width=True, height=400)
@@ -1740,6 +1984,134 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
     # Warning for negative earnings
     if data['current_eps'] and data['current_eps'] < 0:
         st.warning("⚠️ This stock has negative EPS. P/E-based valuation may not be applicable.")
+    
+    # Financial Health Score Section
+    st.markdown("---")
+    st.subheader("🏥 Financial Health Score")
+    
+    health = calculate_financial_health(data)
+    
+    if health.get('letter_grade'):
+        # Main health score display
+        health_cols = st.columns([1, 1, 1, 1, 1])
+        
+        # Color code the letter grade
+        grade = health['letter_grade']
+        if grade in ['A', 'B+']:
+            grade_color = "🟢"
+        elif grade in ['B', 'C+']:
+            grade_color = "🟡"
+        elif grade in ['C', 'D']:
+            grade_color = "🟠"
+        else:
+            grade_color = "🔴"
+        
+        with health_cols[0]:
+            st.metric(
+                "Health Grade",
+                f"{grade_color} {grade}",
+                delta=health['health_status'],
+                delta_color="off",
+                help="Overall financial health grade based on debt levels, liquidity, and bankruptcy risk indicators."
+            )
+        
+        with health_cols[1]:
+            de = health.get('debt_to_equity')
+            de_display = f"{de:.2f}" if de is not None else "N/A"
+            de_status = "Low" if de and de < 0.5 else ("Moderate" if de and de < 1.5 else "High") if de else ""
+            st.metric(
+                "Debt/Equity",
+                de_display,
+                delta=de_status,
+                delta_color="normal" if de and de < 1.0 else "inverse",
+                help="Total Debt / Shareholder Equity. Lower is better. <0.5 is excellent, <1.0 is good, >2.0 is concerning."
+            )
+        
+        with health_cols[2]:
+            cr = health.get('current_ratio')
+            cr_display = f"{cr:.2f}" if cr is not None else "N/A"
+            cr_status = "Strong" if cr and cr >= 1.5 else ("Adequate" if cr and cr >= 1.0 else "Weak") if cr else ""
+            st.metric(
+                "Current Ratio",
+                cr_display,
+                delta=cr_status,
+                delta_color="normal" if cr and cr >= 1.0 else "inverse",
+                help="Current Assets / Current Liabilities. Measures short-term liquidity. >1.5 is healthy, <1.0 may indicate liquidity issues."
+            )
+        
+        with health_cols[3]:
+            ic = health.get('interest_coverage')
+            if ic and ic >= 999:
+                ic_display = "No Debt"
+                ic_status = "Excellent"
+            elif ic is not None:
+                ic_display = f"{ic:.1f}x"
+                ic_status = "Strong" if ic >= 4 else ("Adequate" if ic >= 2 else "Weak")
+            else:
+                ic_display = "N/A"
+                ic_status = ""
+            st.metric(
+                "Interest Coverage",
+                ic_display,
+                delta=ic_status,
+                delta_color="normal" if ic and ic >= 2 else ("inverse" if ic else "off"),
+                help="EBITDA / Interest Expense. Measures ability to pay interest. >4x is strong, <2x is concerning."
+            )
+        
+        with health_cols[4]:
+            az = health.get('altman_z')
+            if az is not None:
+                az_display = f"{az:.2f}"
+                if az > 3.0:
+                    az_status = "Safe Zone"
+                    az_color = "normal"
+                elif az > 1.8:
+                    az_status = "Grey Zone"
+                    az_color = "off"
+                else:
+                    az_status = "Distress Zone"
+                    az_color = "inverse"
+            else:
+                az_display = "N/A"
+                az_status = ""
+                az_color = "off"
+            st.metric(
+                "Altman Z-Score",
+                az_display,
+                delta=az_status,
+                delta_color=az_color,
+                help="Bankruptcy risk predictor. >3.0 = Safe, 1.8-3.0 = Grey Zone (caution), <1.8 = Distress Zone (high risk)."
+            )
+        
+        # Expandable details
+        with st.expander("📊 Financial Health Details"):
+            detail_cols = st.columns(2)
+            
+            with detail_cols[0]:
+                st.markdown("**Component Scores** (0-100)")
+                scores = health.get('component_scores', {})
+                for component, score in scores.items():
+                    label = component.replace('_', ' ').title()
+                    bar_color = "🟢" if score >= 70 else ("🟡" if score >= 50 else "🔴")
+                    st.write(f"{bar_color} **{label}**: {score}/100")
+                
+                st.markdown(f"**Overall Score**: {health.get('overall_score', 0):.1f}/100")
+            
+            with detail_cols[1]:
+                st.markdown("**Interpretation Guide**")
+                st.markdown("""
+                | Grade | Status | Meaning |
+                |-------|--------|---------|
+                | A | Excellent | Very strong balance sheet |
+                | B+ | Very Good | Solid financial position |
+                | B | Good | Healthy with minor concerns |
+                | C+ | Fair | Some financial stress |
+                | C | Below Avg | Notable weaknesses |
+                | D | Poor | Significant concerns |
+                | F | Distressed | High bankruptcy risk |
+                """)
+    else:
+        st.info("💡 Financial health data not available for this stock.")
     
     st.markdown("---")
     
