@@ -29,15 +29,43 @@ st.markdown("""
     .stMetric > div > div {
         font-size: 1.8rem !important;
     }
+    
+    /* ========== MOBILE RESPONSIVE STYLES ========== */
+    @media (max-width: 768px) {
+        .block-container { padding: 1rem 1rem !important; margin-left: 0 !important; }
+        [data-testid="stAppViewContainer"] { padding-left: 0.5rem !important; }
+        [data-testid="stMetric"] { padding-left: 0.25rem !important; }
+        [data-testid="column"] { width: 100% !important; flex: 1 1 100% !important; min-width: 100% !important; padding-left: 0.5rem !important; }
+        [data-testid="stMetricValue"] { font-size: 1.4rem !important; }
+        [data-testid="stMetricLabel"] { font-size: 0.9rem !important; }
+        h1 { font-size: 1.8rem !important; }
+        h2 { font-size: 1.4rem !important; }
+        h3 { font-size: 1.2rem !important; }
+        [data-testid="stDataFrame"], [data-testid="stTable"], .stDataFrame { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+        .stTable table, [data-testid="stDataFrame"] table { font-size: 0.85rem !important; }
+        .stTable th, .stTable td { padding: 6px 8px !important; font-size: 0.85rem !important; }
+        .stButton button { min-height: 48px !important; padding: 12px 16px !important; font-size: 1rem !important; width: 100% !important; }
+        .stNumberInput input { min-height: 44px !important; font-size: 1rem !important; }
+        .stSelectbox > div > div { min-height: 44px !important; }
+        .row-widget.stHorizontalBlock { flex-wrap: wrap !important; }
+        [data-testid="stSidebar"] { min-width: 280px !important; }
+        .streamlit-expanderHeader { font-size: 1rem !important; padding: 12px 8px !important; }
+    }
+    @media (max-width: 480px) {
+        .block-container { padding: 0.5rem 0.25rem !important; }
+        [data-testid="stMetricValue"] { font-size: 1.2rem !important; }
+        h1 { font-size: 1.5rem !important; }
+        h2 { font-size: 1.2rem !important; }
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # --- Page Navigation ---
 nav_col1, nav_col2, nav_col3, nav_col4 = st.columns([1, 1, 1, 3])
 with nav_col1:
-    st.markdown("👉 [Stock Analysis](/)")
+    st.page_link("app.py", label="👉 Stock Analysis")
 with nav_col2:
-    st.markdown("👉 [Watchlist Comparison](/Watchlist_Comparison)")
+    st.page_link("pages/1_Watchlist_Comparison.py", label="👉 Watchlist Comparison")
 with nav_col3:
     st.markdown("**🎲 Monte Carlo** *(current)*")
 

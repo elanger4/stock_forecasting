@@ -95,6 +95,156 @@ st.markdown("""
     .block-container {
         padding: 2rem 3rem !important;
     }
+    
+    /* ========== MOBILE RESPONSIVE STYLES ========== */
+    @media (max-width: 768px) {
+        /* Reduce base padding on mobile - ensure content isn't cut off */
+        .block-container {
+            padding: 1rem 1rem !important;
+            margin-left: 0 !important;
+        }
+        
+        /* Ensure main content area has proper padding */
+        [data-testid="stAppViewContainer"] {
+            padding-left: 0.5rem !important;
+        }
+        
+        /* Fix metric labels being cut off */
+        [data-testid="stMetric"] {
+            padding-left: 0.25rem !important;
+        }
+        
+        /* Stack metric columns vertically */
+        [data-testid="column"] {
+            width: 100% !important;
+            flex: 1 1 100% !important;
+            min-width: 100% !important;
+            padding-left: 0.5rem !important;
+        }
+        
+        /* Make metrics more compact */
+        [data-testid="stMetricValue"] {
+            font-size: 1.4rem !important;
+        }
+        [data-testid="stMetricLabel"] {
+            font-size: 0.9rem !important;
+        }
+        [data-testid="stMetricDelta"] {
+            font-size: 0.8rem !important;
+        }
+        
+        /* Smaller headers on mobile */
+        h1 {
+            font-size: 1.8rem !important;
+        }
+        h2 {
+            font-size: 1.4rem !important;
+        }
+        h3 {
+            font-size: 1.2rem !important;
+        }
+        
+        /* Make tables horizontally scrollable */
+        [data-testid="stDataFrame"], 
+        [data-testid="stTable"],
+        .stDataFrame {
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        /* Smaller table text on mobile */
+        .stTable table, [data-testid="stDataFrame"] table {
+            font-size: 0.85rem !important;
+        }
+        .stTable th, .stTable td {
+            padding: 6px 8px !important;
+            font-size: 0.85rem !important;
+        }
+        
+        /* Larger touch targets for buttons */
+        .stButton button {
+            min-height: 48px !important;
+            padding: 12px 16px !important;
+            font-size: 1rem !important;
+            width: 100% !important;
+        }
+        
+        /* Make toggles easier to tap */
+        [data-testid="stToggle"] {
+            min-height: 44px !important;
+        }
+        
+        /* Sidebar adjustments */
+        [data-testid="stSidebar"] {
+            min-width: 280px !important;
+        }
+        [data-testid="stSidebar"] .stSlider {
+            padding: 0.5rem 0 !important;
+        }
+        
+        /* Navigation links stack vertically */
+        .row-widget.stHorizontalBlock {
+            flex-wrap: wrap !important;
+        }
+        
+        /* Expanders full width */
+        .streamlit-expanderHeader {
+            font-size: 1rem !important;
+            padding: 12px 8px !important;
+        }
+        
+        /* Number inputs more touch-friendly */
+        .stNumberInput input {
+            min-height: 44px !important;
+            font-size: 1rem !important;
+        }
+        
+        /* Select boxes */
+        .stSelectbox > div > div {
+            min-height: 44px !important;
+        }
+        
+        /* Text inputs */
+        .stTextInput input {
+            min-height: 44px !important;
+            font-size: 1rem !important;
+        }
+        
+        /* Warning/Info boxes */
+        .stAlert {
+            padding: 0.75rem !important;
+            font-size: 0.9rem !important;
+        }
+        
+        /* Tabs */
+        .stTabs [data-baseweb="tab"] {
+            padding: 10px 12px !important;
+            font-size: 0.9rem !important;
+        }
+    }
+    
+    /* Extra small screens (phones in portrait) */
+    @media (max-width: 480px) {
+        .block-container {
+            padding: 0.5rem 0.25rem !important;
+        }
+        
+        [data-testid="stMetricValue"] {
+            font-size: 1.2rem !important;
+        }
+        
+        h1 {
+            font-size: 1.5rem !important;
+        }
+        h2 {
+            font-size: 1.2rem !important;
+        }
+        
+        /* Hide less critical navigation text */
+        .row-widget.stHorizontalBlock a {
+            font-size: 0.85rem !important;
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1164,9 +1314,9 @@ nav_col1, nav_col2, nav_col3, nav_col4, nav_col5 = st.columns([1, 1, 1, 1, 2])
 with nav_col1:
     st.markdown("**📊 Stock Analysis** *(current)*")
 with nav_col2:
-    st.markdown("👉 [Watchlist Comparison](/Watchlist_Comparison)")
+    st.page_link("pages/1_Watchlist_Comparison.py", label="👉 Watchlist Comparison")
 with nav_col3:
-    st.markdown("👉 [Monte Carlo](/Monte_Carlo)")
+    st.page_link("pages/2_Monte_Carlo.py", label="👉 Monte Carlo")
 with nav_col4:
     # Watchlist selector
     watchlist_names = get_watchlist_names()
