@@ -1182,12 +1182,37 @@ def calculate_graham_value(data: dict) -> dict:
     """
     Calculate Graham Value metrics for value investing analysis.
     
+    Uses sector-adjusted multipliers instead of Graham's original 22.5.
+    Modern Graham Number = √(Sector_PE × Sector_PB × EPS × Book Value)
+    
     Metrics:
-    1. Graham Number - √(22.5 × EPS × Book Value per Share)
+    1. Graham Number - √(Sector_PE × Sector_PB × EPS × Book Value per Share)
     2. NCAV per Share - (Current Assets - Total Liabilities) / Shares
-    3. P/E × P/B - Combined valuation ratio (Graham wanted < 22.5)
+    3. P/E × P/B - Combined valuation ratio vs sector threshold
     4. Earnings Yield - EPS / Price (compare to bond yields)
     """
+    # Sector-based average P/E and P/B ratios (approximate current market averages)
+    sector_multiples = {
+        'Technology': {'pe': 28, 'pb': 6.0},
+        'Healthcare': {'pe': 22, 'pb': 4.0},
+        'Financial Services': {'pe': 12, 'pb': 1.3},
+        'Consumer Cyclical': {'pe': 20, 'pb': 4.0},
+        'Consumer Defensive': {'pe': 22, 'pb': 5.0},
+        'Industrials': {'pe': 20, 'pb': 4.0},
+        'Energy': {'pe': 12, 'pb': 1.8},
+        'Communication Services': {'pe': 18, 'pb': 3.0},
+        'Real Estate': {'pe': 35, 'pb': 2.0},
+        'Basic Materials': {'pe': 14, 'pb': 2.0},
+        'Utilities': {'pe': 18, 'pb': 1.8},
+    }
+    default_multiples = {'pe': 20, 'pb': 3.0}  # Market average fallback
+    
+    sector = data.get('sector', 'Unknown')
+    multiples = sector_multiples.get(sector, default_multiples)
+    sector_pe = multiples['pe']
+    sector_pb = multiples['pb']
+    sector_threshold = sector_pe * sector_pb  # Sector-adjusted P/E × P/B threshold
+    
     results = {
         'graham_number': None,
         'ncav_per_share': None,
@@ -1197,6 +1222,10 @@ def calculate_graham_value(data: dict) -> dict:
         'ncav_margin': None,    # % difference from NCAV
         'is_undervalued': False,
         'is_net_net': False,    # Trading below NCAV
+        'sector_pe': sector_pe,
+        'sector_pb': sector_pb,
+        'sector_threshold': sector_threshold,
+        'sector': sector,
     }
     
     current_price = data.get('current_price')
@@ -1211,10 +1240,11 @@ def calculate_graham_value(data: dict) -> dict:
     if not current_price or current_price <= 0:
         return results
     
-    # 1. Graham Number: √(22.5 × EPS × BVPS)
-    # Only valid for positive EPS and book value
+    # 1. Modern Graham Number: √(Sector_PE × Sector_PB × EPS × BVPS)
+    # Uses sector-appropriate multiples instead of fixed 22.5
     if eps and eps > 0 and book_value and book_value > 0:
-        graham_number = (22.5 * eps * book_value) ** 0.5
+        graham_multiplier = sector_pe * sector_pb
+        graham_number = (graham_multiplier * eps * book_value) ** 0.5
         results['graham_number'] = graham_number
         
         # Margin vs current price (positive = undervalued)
@@ -1237,7 +1267,7 @@ def calculate_graham_value(data: dict) -> dict:
         if ncav_per_share > 0 and current_price < ncav_per_share:
             results['is_net_net'] = True
     
-    # 3. P/E × P/B (Graham wanted < 22.5)
+    # 3. P/E × P/B vs sector threshold (instead of fixed 22.5)
     if trailing_pe and trailing_pe > 0 and p_book and p_book > 0:
         results['pe_times_pb'] = trailing_pe * p_book
     
@@ -2547,6 +2577,13 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
         st.markdown("---")
         st.subheader("📖 Graham Value Analysis")
         
+        # Show sector context
+        sector_pe = graham.get('sector_pe', 20)
+        sector_pb = graham.get('sector_pb', 3.0)
+        sector_threshold = graham.get('sector_threshold', 60)
+        graham_sector = graham.get('sector', 'Unknown')
+        st.caption(f"**Sector-Adjusted** — Using {graham_sector} averages: P/E={sector_pe}, P/B={sector_pb}")
+        
         graham_cols = st.columns(4)
         
         with graham_cols[0]:
@@ -2570,7 +2607,7 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
                 gn_display,
                 delta=margin_text,
                 delta_color=delta_color,
-                help="Fair value estimate: √(22.5 × EPS × Book Value). If price < Graham Number, stock may be undervalued."
+                help=f"Sector-adjusted fair value: √({sector_pe}×{sector_pb} × EPS × Book Value). If price < Graham Number, stock may be undervalued relative to sector."
             )
         
         with graham_cols[1]:
@@ -2606,11 +2643,11 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
             pe_pb = graham.get('pe_times_pb')
             if pe_pb is not None:
                 pe_pb_display = f"{pe_pb:.1f}"
-                if pe_pb < 22.5:
-                    status = "Passes Graham test"
+                if pe_pb < sector_threshold:
+                    status = f"Below sector avg ({sector_threshold:.0f})"
                     delta_color = "normal"
                 else:
-                    status = "Exceeds 22.5 limit"
+                    status = f"Above sector avg ({sector_threshold:.0f})"
                     delta_color = "inverse"
             else:
                 pe_pb_display = "N/A"
@@ -2621,7 +2658,7 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
                 pe_pb_display,
                 delta=status,
                 delta_color=delta_color,
-                help="Graham's combined ratio. He required P/E × P/B < 22.5 for defensive investors."
+                help=f"Combined valuation ratio. Sector threshold ({graham_sector}): {sector_threshold:.0f}. Below threshold suggests relative value."
             )
         
         with graham_cols[3]:
@@ -2653,8 +2690,8 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
         # Special callouts for significant findings
         if graham.get('is_net_net'):
             st.success("🎯 **Net-Net Bargain**: This stock trades below its Net Current Asset Value — a rare Graham-style deep value opportunity.")
-        elif graham.get('is_undervalued') and graham.get('pe_times_pb') and graham['pe_times_pb'] < 22.5:
-            st.info("✅ **Graham Criteria Met**: Price below Graham Number and P/E × P/B < 22.5")
+        elif graham.get('is_undervalued') and graham.get('pe_times_pb') and graham['pe_times_pb'] < sector_threshold:
+            st.info(f"✅ **Graham Criteria Met**: Price below Graham Number and P/E × P/B below sector threshold ({sector_threshold:.0f})")
     
     st.markdown("---")
     
