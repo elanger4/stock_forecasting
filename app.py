@@ -2,6 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import requests
 
 st.set_page_config(page_title="Stock Valuation Projection Engine", layout="wide")
 
@@ -838,6 +839,88 @@ def get_treasury_yield() -> float:
         return 0.045  # Default to 4.5% if fetch fails
     except:
         return 0.045  # Default to 4.5%
+
+
+@st.cache_data(ttl=86400)  # Cache for 24 hours
+def get_sec_cik(ticker: str) -> str:
+    """Get SEC CIK number for a ticker symbol."""
+    try:
+        # SEC provides a mapping of tickers to CIKs
+        headers = {'User-Agent': 'StockAnalysisTool/1.0 (contact@example.com)'}
+        url = "https://www.sec.gov/files/company_tickers.json"
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            # Search for ticker (case-insensitive)
+            for entry in data.values():
+                if entry.get('ticker', '').upper() == ticker.upper():
+                    # CIK needs to be zero-padded to 10 digits
+                    cik = str(entry.get('cik_str', '')).zfill(10)
+                    return cik
+        return None
+    except Exception:
+        return None
+
+
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def fetch_sec_filings(ticker: str, filing_types: list = None, limit: int = 10) -> list:
+    """
+    Fetch recent SEC filings for a company.
+    
+    Args:
+        ticker: Stock ticker symbol
+        filing_types: List of filing types to filter (e.g., ['10-K', '10-Q', '8-K'])
+        limit: Maximum number of filings to return
+    
+    Returns:
+        List of dicts with filing info: form, filingDate, accessionNumber, primaryDocument, url
+    """
+    if filing_types is None:
+        filing_types = ['10-K', '10-Q', '8-K', '10-K/A', '10-Q/A']
+    
+    try:
+        # Get CIK for the ticker
+        cik = get_sec_cik(ticker)
+        if not cik:
+            return []
+        
+        # Fetch company submissions from SEC EDGAR
+        headers = {'User-Agent': 'StockAnalysisTool/1.0 (contact@example.com)'}
+        url = f"https://data.sec.gov/submissions/CIK{cik}.json"
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        if response.status_code != 200:
+            return []
+        
+        data = response.json()
+        filings = []
+        
+        # Recent filings are in the 'filings' -> 'recent' section
+        recent = data.get('filings', {}).get('recent', {})
+        forms = recent.get('form', [])
+        filing_dates = recent.get('filingDate', [])
+        accession_numbers = recent.get('accessionNumber', [])
+        primary_documents = recent.get('primaryDocument', [])
+        
+        for i, form in enumerate(forms):
+            if form in filing_types:
+                accession = accession_numbers[i].replace('-', '')
+                filing = {
+                    'form': form,
+                    'filingDate': filing_dates[i],
+                    'accessionNumber': accession_numbers[i],
+                    'primaryDocument': primary_documents[i],
+                    'url': f"https://www.sec.gov/Archives/edgar/data/{cik.lstrip('0')}/{accession}/{primary_documents[i]}"
+                }
+                filings.append(filing)
+                
+                if len(filings) >= limit:
+                    break
+        
+        return filings
+    
+    except Exception:
+        return []
 
 def calculate_dcf(
     free_cash_flow: float,
@@ -2095,8 +2178,60 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
                 else:
                     st.info("No insider purchase summary available.")
     
+    # SEC Filings Section
+    if 'show_sec_filings' not in st.session_state:
+        st.session_state.show_sec_filings = False
+    
+    sec_col1, sec_col2 = st.columns([1, 5])
+    with sec_col1:
+        if st.button("📄 SEC Filings", help="View recent SEC filings (10-K, 10-Q, 8-K)"):
+            st.session_state.show_sec_filings = not st.session_state.show_sec_filings
+    
+    if st.session_state.show_sec_filings:
+        with st.expander(f"📄 {data['company_name']} SEC Filings", expanded=True):
+            close_col1, close_col2 = st.columns([6, 1])
+            with close_col2:
+                if st.button("✕ Close", key="close_sec"):
+                    st.session_state.show_sec_filings = False
+                    st.rerun()
+            
+            # Fetch SEC filings
+            with st.spinner("Fetching SEC filings..."):
+                filings = fetch_sec_filings(st.session_state.ticker, limit=15)
+            
+            if filings:
+                st.markdown("**Recent Financial Filings** — Click to view on SEC.gov")
+                
+                # Create a clean display
+                for filing in filings:
+                    form_type = filing['form']
+                    filing_date = filing['filingDate']
+                    url = filing['url']
+                    
+                    # Color code by form type
+                    if '10-K' in form_type:
+                        icon = "📊"
+                        desc = "Annual Report"
+                    elif '10-Q' in form_type:
+                        icon = "📈"
+                        desc = "Quarterly Report"
+                    elif '8-K' in form_type:
+                        icon = "📰"
+                        desc = "Current Report"
+                    else:
+                        icon = "📄"
+                        desc = "Filing"
+                    
+                    # Display as clickable link
+                    st.markdown(f"{icon} **[{form_type}]({url})** — {desc} — Filed: {filing_date}")
+                
+                st.markdown("---")
+                st.caption("💡 **10-K**: Annual report with audited financials | **10-Q**: Quarterly report | **8-K**: Material events")
+            else:
+                st.info("No SEC filings found. This may be a non-US company or the ticker may not be registered with the SEC.")
+    
     # Current metrics
-    m1, m2, m3, m4, m5 = st.columns(5)
+    m1, m2, m3, m4, m5, m6 = st.columns(6)
     with m1:
         st.metric("Current Price", format_currency(data['current_price']), help="The latest trading price of the stock. This is the baseline for calculating future returns.")
     with m2:
@@ -2107,6 +2242,63 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
         st.metric("Net Income", format_large_number(data['net_income']), help="Net income (profit) after all expenses, taxes, and costs. This is the bottom-line earnings.")
     with m5:
         st.metric("Current Margin", format_percent(data['current_margin']), help="Net Income Margin = Net Income / Revenue. Shows what percentage of revenue becomes profit. Higher is better.")
+    with m6:
+        # Calculate insider buys in last quarter and last year
+        insider_transactions = data.get('insider_transactions')
+        buys_quarter = 0
+        buys_year = 0
+        if insider_transactions is not None and not insider_transactions.empty:
+            from datetime import datetime, timedelta
+            today = datetime.now()
+            quarter_ago = today - timedelta(days=90)
+            year_ago = today - timedelta(days=365)
+            
+            # Check if there's a date column and Text column
+            if 'Text' in insider_transactions.columns:
+                # Filter for buy transactions
+                buy_mask = insider_transactions['Text'].str.contains('Buy|Purchase|Acquisition', case=False, na=False)
+                buy_trans = insider_transactions[buy_mask]
+                
+                # Try to find date column
+                date_col = None
+                for col in ['Start Date', 'Date', 'Filing Date', 'startDate']:
+                    if col in buy_trans.columns:
+                        date_col = col
+                        break
+                
+                if date_col:
+                    try:
+                        buy_trans_dated = buy_trans.copy()
+                        buy_trans_dated[date_col] = pd.to_datetime(buy_trans_dated[date_col], errors='coerce')
+                        buys_quarter = len(buy_trans_dated[buy_trans_dated[date_col] >= quarter_ago])
+                        buys_year = len(buy_trans_dated[buy_trans_dated[date_col] >= year_ago])
+                    except:
+                        # If date parsing fails, just count total buys
+                        buys_year = len(buy_trans)
+                        buys_quarter = min(buys_year, len(buy_trans) // 4) if buys_year > 0 else 0
+                else:
+                    # No date column, estimate from total
+                    buys_year = len(buy_trans)
+                    buys_quarter = min(buys_year, len(buy_trans) // 4) if buys_year > 0 else 0
+        
+        # Display metric
+        if buys_quarter > 0:
+            delta_text = f"{buys_year} in last year"
+            delta_color = "normal"
+        elif buys_year > 0:
+            delta_text = f"{buys_year} in last year"
+            delta_color = "off"
+        else:
+            delta_text = "None in last year"
+            delta_color = "off"
+        
+        st.metric(
+            "Insider Buys (90d)",
+            str(buys_quarter),
+            delta=delta_text,
+            delta_color=delta_color,
+            help="Number of insider buy transactions in the last 90 days. Sub-metric shows buys in the last year. More insider buying can be a bullish signal."
+        )
     
     # DCF Intrinsic Value Section
     st.markdown("---")
