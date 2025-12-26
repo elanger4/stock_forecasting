@@ -10,7 +10,7 @@ The DEFAULT_WATCHLIST determines which watchlist is selected on page load.
 
 WATCHLISTS = {
     "watchlist_0": [
-        "ADBE", "AMD", "AMZN", "AXP", "BTI", "CELH", "FUBO",
+        "ADBE", "AMD", "AMZN", "AXP", "AXTI" "BTI", "CELH", "FUBO",
         "HNST", "LNTH", "META", "MU", "NVDA", "PLTR", "PYPL", "RVLV", "TSLZ", "TSM", "VICE"
     ],
     "watchlist_1": [
