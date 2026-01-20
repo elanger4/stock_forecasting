@@ -37,6 +37,8 @@ with nav_col3:
     st.page_link("pages/2_Monte_Carlo.py", label="👉 Monte Carlo")
 with nav_col4:
     st.page_link("pages/3_Cross_Asset_Dashboard.py", label="👉 Cross-Asset")
+with nav_col6:
+    st.page_link("pages/4_Magic_Screener.py", label="👉 Magic Screener")
 with nav_col5:
     # Watchlist selector
     watchlist_names = get_watchlist_names()

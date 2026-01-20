@@ -1497,7 +1497,7 @@ def build_scenario_table(data: dict, revenue_growth: float, net_margin: float, s
     return df, projections, cagr_low, cagr_high
 
 # --- Page Navigation & Watchlist Selector ---
-nav_col1, nav_col2, nav_col3, nav_col4, nav_col5, nav_col6 = st.columns([1, 1, 1, 1, 1, 1])
+nav_col1, nav_col2, nav_col3, nav_col4, nav_col5, nav_col6, nav_col7 = st.columns([1, 1, 1, 1, 1, 1, 1])
 with nav_col1:
     st.markdown("**📊 Stock Analysis** *(current)*")
 with nav_col2:
@@ -1506,6 +1506,8 @@ with nav_col3:
     st.page_link("pages/2_Monte_Carlo.py", label="👉 Monte Carlo")
 with nav_col4:
     st.page_link("pages/3_Cross_Asset_Dashboard.py", label="👉 Cross-Asset")
+with nav_col7:
+    st.page_link("pages/4_Magic_Screener.py", label="👉 Magic Screener")
 with nav_col5:
     # Watchlist selector
     watchlist_names = get_watchlist_names()
