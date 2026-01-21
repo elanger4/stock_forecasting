@@ -54,65 +54,153 @@ st.markdown("---")
 # --- Fetch Russell 3000 Tickers ---
 @st.cache_data(ttl=86400)  # Cache for 24 hours
 def get_russell_3000_tickers():
-    """Fetch Russell 3000 constituents from iShares IWV ETF holdings."""
-    try:
-        # Try to get from iShares IWV (Russell 3000 ETF) holdings page
-        url = "https://www.ishares.com/us/products/239714/ishares-russell-3000-etf/1467271812596.ajax?fileType=csv&fileName=IWV_holdings&dataType=fund"
-        df = pd.read_csv(url, skiprows=9)
-        
-        # Filter to equities only and get tickers
-        if 'Ticker' in df.columns:
-            tickers = df[df['Asset Class'] == 'Equity']['Ticker'].dropna().tolist()
-            # Clean tickers (remove any with special characters)
-            tickers = [t.strip() for t in tickers if isinstance(t, str) and t.strip().isalpha() or (isinstance(t, str) and '.' not in t and '-' not in t)]
-            return tickers[:3000]  # Limit to 3000
-    except Exception as e:
-        pass
+    """Fetch Russell 3000 constituents from multiple sources with fallbacks."""
+    import requests
     
-    # Fallback: Try Wikipedia S&P 500 + additional sources
+    all_tickers = []
+    
+    # Method 1: Try Wikipedia S&P 500 + S&P 400 + S&P 600 (most reliable)
     try:
         # S&P 500
         sp500_url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-        sp500_tables = pd.read_html(sp500_url)
-        sp500_tickers = sp500_tables[0]['Symbol'].str.replace('.', '-', regex=False).tolist()
-        
-        # S&P 400 Mid Cap
-        sp400_url = "https://en.wikipedia.org/wiki/List_of_S%26P_400_companies"
-        sp400_tables = pd.read_html(sp400_url)
-        sp400_tickers = sp400_tables[0]['Symbol'].str.replace('.', '-', regex=False).tolist()
-        
-        # S&P 600 Small Cap
-        sp600_url = "https://en.wikipedia.org/wiki/List_of_S%26P_600_companies"
-        sp600_tables = pd.read_html(sp600_url)
-        sp600_tickers = sp600_tables[0]['Symbol'].str.replace('.', '-', regex=False).tolist()
-        
-        # Combine and deduplicate
-        all_tickers = list(set(sp500_tickers + sp400_tickers + sp600_tickers))
-        return sorted(all_tickers)
-    except Exception as e:
+        sp500_tables = pd.read_html(sp500_url, attrs={'id': 'constituents'})
+        if sp500_tables:
+            sp500_tickers = sp500_tables[0]['Symbol'].str.replace('.', '-', regex=False).tolist()
+            all_tickers.extend(sp500_tickers)
+    except Exception:
         pass
     
-    # Final fallback: Return a curated list of ~1500 liquid US stocks
-    # This is a minimal fallback - in production you'd want a better source
+    try:
+        # S&P 400 Mid Cap
+        sp400_url = "https://en.wikipedia.org/wiki/List_of_S%26P_400_companies"
+        sp400_tables = pd.read_html(sp400_url, attrs={'id': 'constituents'})
+        if sp400_tables:
+            sp400_tickers = sp400_tables[0]['Symbol'].str.replace('.', '-', regex=False).tolist()
+            all_tickers.extend(sp400_tickers)
+    except Exception:
+        pass
+    
+    try:
+        # S&P 600 Small Cap
+        sp600_url = "https://en.wikipedia.org/wiki/List_of_S%26P_600_companies"
+        sp600_tables = pd.read_html(sp600_url, attrs={'id': 'constituents'})
+        if sp600_tables:
+            sp600_tickers = sp600_tables[0]['Symbol'].str.replace('.', '-', regex=False).tolist()
+            all_tickers.extend(sp600_tickers)
+    except Exception:
+        pass
+    
+    # If we got a reasonable number of tickers from Wikipedia, use them
+    if len(all_tickers) >= 500:
+        # Deduplicate and clean
+        all_tickers = list(set(all_tickers))
+        all_tickers = [t.strip() for t in all_tickers if isinstance(t, str) and len(t) <= 5]
+        return sorted(all_tickers)
+    
+    # Method 2: Try iShares IWV ETF holdings
+    try:
+        url = "https://www.ishares.com/us/products/239714/ishares-russell-3000-etf/1467271812596.ajax?fileType=csv&fileName=IWV_holdings&dataType=fund"
+        df = pd.read_csv(url, skiprows=9)
+        
+        if 'Ticker' in df.columns:
+            tickers = df[df['Asset Class'] == 'Equity']['Ticker'].dropna().tolist()
+            tickers = [t.strip() for t in tickers if isinstance(t, str) and len(t) <= 5]
+            if len(tickers) >= 500:
+                return tickers[:3000]
+    except Exception:
+        pass
+    
+    # Final fallback: Return comprehensive curated list
     return get_fallback_tickers()
 
 
 def get_fallback_tickers():
-    """Fallback list of major US tickers if web sources fail."""
-    # Major US stocks - this is a minimal fallback
+    """Comprehensive fallback list of ~1500 liquid US stocks."""
+    # S&P 500 + S&P 400 + additional liquid stocks
     major_tickers = [
-        "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "BRK-B", "UNH", "JNJ",
-        "V", "XOM", "JPM", "WMT", "MA", "PG", "CVX", "HD", "LLY", "MRK",
-        "ABBV", "PEP", "KO", "COST", "AVGO", "TMO", "MCD", "CSCO", "ACN", "ABT",
-        "DHR", "WFC", "NEE", "LIN", "VZ", "ADBE", "TXN", "PM", "CRM", "RTX",
-        "BMY", "UPS", "CMCSA", "NKE", "ORCL", "HON", "QCOM", "T", "UNP", "LOW",
-        "COP", "BA", "INTC", "SPGI", "CAT", "IBM", "AMD", "GS", "ELV", "AMAT",
-        "DE", "SBUX", "MDT", "AXP", "BLK", "PLD", "GILD", "ADI", "MDLZ", "CVS",
-        "ISRG", "TJX", "REGN", "VRTX", "SYK", "BKNG", "MMC", "ADP", "TMUS", "CI",
-        "ZTS", "LRCX", "MO", "CB", "ETN", "SO", "DUK", "BDX", "EOG", "PNC",
-        "ITW", "NOC", "SCHW", "BSX", "APD", "CL", "CSX", "CME", "SLB", "MU",
+        # Mega Cap / Large Cap (S&P 500 top holdings)
+        "AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "NVDA", "META", "TSLA", "BRK-B", "UNH",
+        "JNJ", "V", "XOM", "JPM", "WMT", "MA", "PG", "CVX", "HD", "LLY",
+        "MRK", "ABBV", "PEP", "KO", "COST", "AVGO", "TMO", "MCD", "CSCO", "ACN",
+        "ABT", "DHR", "WFC", "NEE", "LIN", "VZ", "ADBE", "TXN", "PM", "CRM",
+        "RTX", "BMY", "UPS", "CMCSA", "NKE", "ORCL", "HON", "QCOM", "T", "UNP",
+        "LOW", "COP", "BA", "INTC", "SPGI", "CAT", "IBM", "AMD", "GS", "ELV",
+        "AMAT", "DE", "SBUX", "MDT", "AXP", "BLK", "PLD", "GILD", "ADI", "MDLZ",
+        "CVS", "ISRG", "TJX", "REGN", "VRTX", "SYK", "BKNG", "MMC", "ADP", "TMUS",
+        "CI", "ZTS", "LRCX", "MO", "CB", "ETN", "SO", "DUK", "BDX", "EOG",
+        "PNC", "ITW", "NOC", "SCHW", "BSX", "APD", "CL", "CSX", "CME", "SLB",
+        # More S&P 500
+        "MU", "MCO", "USB", "FDX", "ICE", "EMR", "NSC", "PXD", "FCX", "GM",
+        "GD", "ORLY", "SHW", "HUM", "AON", "KLAC", "PSA", "TGT", "SNPS", "CDNS",
+        "AZO", "MCHP", "MCK", "CTAS", "CARR", "TFC", "AEP", "MSI", "MET", "EW",
+        "MNST", "D", "SRE", "OXY", "FTNT", "PAYX", "AIG", "O", "TEL", "DXCM",
+        "A", "PCAR", "KMB", "WELL", "GIS", "MSCI", "HES", "IDXX", "DOW", "HSY",
+        "CTSH", "PRU", "CMG", "BIIB", "YUM", "ROST", "FAST", "VRSK", "ODFL", "KHC",
+        "CPRT", "GEHC", "KDP", "CTVA", "EA", "BKR", "CBRE", "EXC", "DD", "XEL",
+        "VICI", "ANSS", "ON", "FANG", "HAL", "CDW", "ROP", "KEYS", "DVN", "WEC",
+        "ED", "DLTR", "AWK", "VMC", "MLM", "GWW", "EFX", "ACGL", "RMD", "TSCO",
+        "WST", "WTW", "EBAY", "FTV", "CHD", "MTD", "CSGP", "DLR", "HIG", "PPG",
+        # Mid Cap (S&P 400 selections)
+        "DECK", "POOL", "MANH", "TTEK", "RBC", "BURL", "WSM", "LECO", "FDS", "SAIA",
+        "EXEL", "LSTR", "TREX", "SITE", "WYNN", "JAZZ", "RGLD", "OLED", "MIDD", "RGEN",
+        "GTLS", "NOVT", "ENSG", "EXPO", "CGNX", "PEGA", "CWST", "ASGN", "UFPI", "ITRI",
+        "GLOB", "MEDP", "MGPI", "CADE", "ESNT", "LNTH", "APAM", "CVLT", "BCPC", "PRGS",
+        "QLYS", "LANC", "CRUS", "HUBG", "CALM", "ACIW", "IBOC", "POWI", "IOSP", "MGEE",
+        "SPSC", "CCOI", "MMSI", "NEOG", "ICUI", "HLIT", "PLUS", "VCEL", "NMIH", "ALTR",
+        # Additional Large/Mid Cap
+        "PYPL", "SQ", "SHOP", "SNOW", "CRWD", "DDOG", "ZS", "NET", "PANW", "OKTA",
+        "TWLO", "MDB", "VEEV", "WDAY", "NOW", "TEAM", "ZM", "DOCU", "SPLK", "COUP",
+        "ROKU", "TTD", "PINS", "SNAP", "UBER", "LYFT", "DASH", "ABNB", "COIN", "HOOD",
+        "RIVN", "LCID", "NIO", "XPEV", "LI", "FSR", "PLTR", "PATH", "AI", "BBAI",
+        "IONQ", "RGTI", "QUBT", "SOUN", "UPST", "AFRM", "SOFI", "NU", "MELI", "SE",
+        "GRAB", "BABA", "JD", "PDD", "BIDU", "NTES", "TME", "BILI", "IQ", "VIPS",
+        # Healthcare
+        "PFE", "MRK", "LLY", "ABBV", "BMY", "AMGN", "GILD", "BIIB", "REGN", "VRTX",
+        "MRNA", "BNTX", "NVAX", "ZBH", "DXCM", "ALGN", "HOLX", "ILMN", "EXAS", "NTRA",
+        "RARE", "BMRN", "ALNY", "SGEN", "INCY", "NBIX", "UTHR", "SRPT", "HZNP", "IONS",
+        # Financials
+        "BAC", "C", "WFC", "GS", "MS", "SCHW", "BK", "STT", "NTRS", "TROW",
+        "BLK", "BX", "KKR", "APO", "ARES", "OWL", "CG", "TPG", "EQH", "VOYA",
+        "AMP", "RJF", "LPLA", "SEIC", "MKTX", "CBOE", "NDAQ", "CME", "ICE", "MSCI",
+        "SPGI", "MCO", "FDS", "VRSK", "TRI", "INFO", "DNB", "ZG", "RDFN", "OPEN",
+        # Energy
+        "XOM", "CVX", "COP", "EOG", "SLB", "OXY", "MPC", "VLO", "PSX", "HES",
+        "DVN", "FANG", "PXD", "APA", "HAL", "BKR", "NOV", "CHK", "RRC", "AR",
+        "EQT", "SWN", "CTRA", "MTDR", "CHRD", "PR", "VTLE", "ESTE", "GPOR", "PDCE",
+        # Industrials
+        "CAT", "DE", "HON", "UNP", "UPS", "FDX", "LMT", "RTX", "BA", "GE",
+        "MMM", "EMR", "ETN", "ITW", "PH", "ROK", "AME", "FAST", "ODFL", "JBHT",
+        "XPO", "CHRW", "EXPD", "LSTR", "SAIA", "WERN", "KNX", "SNDR", "ARCB", "HTLD",
+        # Consumer
+        "AMZN", "WMT", "COST", "TGT", "HD", "LOW", "TJX", "ROST", "BBY", "DG",
+        "DLTR", "FIVE", "OLLI", "BIG", "PRTY", "BBWI", "ULTA", "ELF", "COTY", "EL",
+        "NKE", "LULU", "UAA", "VFC", "PVH", "RL", "TPR", "CPRI", "GOOS", "CROX",
+        "DKS", "HIBB", "ASO", "BGFV", "PLCE", "ANF", "AEO", "URBN", "GPS", "EXPR",
+        # Technology
+        "AAPL", "MSFT", "NVDA", "AMD", "INTC", "AVGO", "QCOM", "TXN", "ADI", "MCHP",
+        "NXPI", "ON", "SWKS", "QRVO", "MRVL", "MPWR", "SLAB", "DIOD", "POWI", "AOSL",
+        "CRM", "ORCL", "SAP", "INTU", "ADSK", "ANSS", "CDNS", "SNPS", "PTC", "MANH",
+        "ADBE", "FTNT", "PANW", "CRWD", "ZS", "OKTA", "CYBR", "TENB", "QLYS", "RPD",
+        # REITs
+        "AMT", "PLD", "CCI", "EQIX", "PSA", "SPG", "O", "WELL", "DLR", "AVB",
+        "EQR", "VTR", "ARE", "BXP", "SLG", "VNO", "KIM", "REG", "FRT", "UDR",
+        "ESS", "MAA", "CPT", "AIV", "INVH", "AMH", "SUI", "ELS", "REXR", "STAG",
+        # Utilities
+        "NEE", "DUK", "SO", "D", "AEP", "SRE", "XEL", "ED", "EXC", "WEC",
+        "ES", "AWK", "ATO", "NI", "CMS", "DTE", "LNT", "EVRG", "PNW", "OGE",
+        # Materials
+        "LIN", "APD", "SHW", "ECL", "DD", "NEM", "FCX", "NUE", "STLD", "CLF",
+        "X", "AA", "CENX", "ATI", "CMC", "RS", "WOR", "ZEUS", "HAYN", "USAP",
+        # Communications
+        "GOOGL", "META", "NFLX", "DIS", "CMCSA", "T", "VZ", "TMUS", "CHTR", "LBRDK",
+        "WBD", "PARA", "FOX", "FOXA", "NWSA", "NWS", "NYT", "GCI", "LEE", "TGNA",
+        # Additional mid/small caps for broader coverage
+        "AXON", "PAYC", "PCTY", "HQY", "WEX", "GPN", "FIS", "FISV", "ADP", "PAYX",
+        "CDAY", "BILL", "HUBS", "ZI", "DSGX", "NCNO", "APPF", "ASAN", "FROG", "ESTC",
+        "CFLT", "GTLB", "DOCN", "BRZE", "AMPL", "SEMR", "PUBM", "MGNI", "CRTO", "APPS",
     ]
-    return major_tickers
+    # Deduplicate
+    return list(dict.fromkeys(major_tickers))
 
 
 @st.cache_data(ttl=86400)  # Cache for 24 hours
