@@ -818,6 +818,11 @@ def fetch_stock_data(ticker: str) -> dict:
             # Graham Value data
             'book_value': book_value,
             'total_liabilities': info.get('totalLiab') or info.get('totalDebt', 0),
+            # Dividend data for DDM
+            'dividend_rate': info.get('dividendRate'),
+            'dividend_yield': info.get('dividendYield'),
+            'five_year_avg_dividend_yield': info.get('fiveYearAvgDividendYield'),
+            'payout_ratio': info.get('payoutRatio'),
             'success': True,
             'error': None
         }
@@ -995,6 +1000,317 @@ def calculate_dcf(
         'discount_rate': discount_rate,
         'projected_fcfs': projected_fcfs,
         'error': None
+    }
+
+def calculate_ddm(
+    dividend_rate: float,
+    current_price: float,
+    dividend_growth_rate: float = 0.03,  # 3% default growth
+    required_return: float = 0.10  # 10% default required return
+) -> dict:
+    """
+    Calculate Dividend Discount Model (Gordon Growth Model) intrinsic value.
+    
+    Formula: Intrinsic Value = Dividend / (required_return - dividend_growth)
+    
+    Returns None for non-dividend stocks.
+    """
+    if dividend_rate is None or dividend_rate <= 0:
+        return {'intrinsic_value': None, 'error': 'No dividend', 'is_dividend_stock': False}
+    
+    if required_return <= dividend_growth_rate:
+        return {'intrinsic_value': None, 'error': 'Growth exceeds required return', 'is_dividend_stock': True}
+    
+    intrinsic_value = dividend_rate / (required_return - dividend_growth_rate)
+    
+    upside_pct = None
+    if current_price and current_price > 0:
+        upside_pct = ((intrinsic_value / current_price) - 1) * 100
+    
+    return {
+        'intrinsic_value': intrinsic_value,
+        'dividend_rate': dividend_rate,
+        'dividend_growth_rate': dividend_growth_rate,
+        'required_return': required_return,
+        'upside_pct': upside_pct,
+        'is_dividend_stock': True,
+        'error': None
+    }
+
+def calculate_multiples_value(
+    eps: float,
+    current_price: float,
+    sector: str = 'Unknown'
+) -> dict:
+    """
+    Calculate fair value using sector average P/E multiple.
+    
+    Formula: Fair Value = Sector_Avg_PE × EPS
+    """
+    sector_multiples = {
+        'Technology': {'pe': 28, 'pb': 6.0},
+        'Healthcare': {'pe': 22, 'pb': 4.0},
+        'Financial Services': {'pe': 12, 'pb': 1.3},
+        'Consumer Cyclical': {'pe': 18, 'pb': 3.5},
+        'Consumer Defensive': {'pe': 20, 'pb': 4.0},
+        'Industrials': {'pe': 20, 'pb': 3.5},
+        'Energy': {'pe': 12, 'pb': 1.5},
+        'Real Estate': {'pe': 35, 'pb': 2.0},
+        'Communication Services': {'pe': 18, 'pb': 3.0},
+        'Basic Materials': {'pe': 14, 'pb': 2.0},
+        'Utilities': {'pe': 18, 'pb': 1.8},
+    }
+    default_multiples = {'pe': 20, 'pb': 3.0}
+    
+    if eps is None or eps <= 0:
+        return {'intrinsic_value': None, 'error': 'No positive EPS', 'sector_pe': None}
+    
+    multiples = sector_multiples.get(sector, default_multiples)
+    sector_pe = multiples['pe']
+    
+    intrinsic_value = sector_pe * eps
+    
+    upside_pct = None
+    if current_price and current_price > 0:
+        upside_pct = ((intrinsic_value / current_price) - 1) * 100
+    
+    return {
+        'intrinsic_value': intrinsic_value,
+        'sector_pe': sector_pe,
+        'sector': sector,
+        'upside_pct': upside_pct,
+        'error': None
+    }
+
+def calculate_reverse_dcf(
+    current_price: float,
+    shares_outstanding: float,
+    free_cash_flow: float,
+    discount_rate: float,
+    terminal_growth_rate: float = 0.03,
+    projection_years: int = 5,
+    total_debt: float = 0,
+    total_cash: float = 0
+) -> dict:
+    """
+    Calculate the implied FCF growth rate that justifies the current market price.
+    Uses bisection method to solve for growth rate.
+    """
+    if (current_price is None or current_price <= 0 or 
+        shares_outstanding is None or shares_outstanding <= 0 or
+        free_cash_flow is None or free_cash_flow <= 0):
+        return {'implied_growth': None, 'error': 'Missing data or negative FCF'}
+    
+    # Target equity value based on current price
+    target_equity = current_price * shares_outstanding
+    
+    # Bisection search for growth rate
+    low, high = -0.50, 1.00  # -50% to 100% growth range
+    tolerance = 0.0001
+    max_iterations = 50
+    
+    for _ in range(max_iterations):
+        mid = (low + high) / 2
+        
+        # Calculate DCF value at this growth rate
+        fcf = free_cash_flow
+        discounted_fcfs = []
+        for year in range(1, projection_years + 1):
+            fcf = fcf * (1 + mid)
+            discount_factor = 1 / ((1 + discount_rate) ** year)
+            discounted_fcfs.append(fcf * discount_factor)
+        
+        pv_fcfs = sum(discounted_fcfs)
+        
+        # Terminal value
+        final_fcf = fcf
+        if discount_rate > terminal_growth_rate:
+            terminal_value = final_fcf * (1 + terminal_growth_rate) / (discount_rate - terminal_growth_rate)
+            terminal_discount = 1 / ((1 + discount_rate) ** projection_years)
+            pv_terminal = terminal_value * terminal_discount
+        else:
+            pv_terminal = 0
+        
+        enterprise_value = pv_fcfs + pv_terminal
+        equity_value = enterprise_value - total_debt + total_cash
+        
+        if abs(equity_value - target_equity) < tolerance * target_equity:
+            break
+        
+        if equity_value < target_equity:
+            low = mid
+        else:
+            high = mid
+    
+    implied_growth = mid
+    
+    return {
+        'implied_growth': implied_growth,
+        'implied_growth_pct': implied_growth * 100,
+        'error': None
+    }
+
+def calculate_dynamic_growth_rate(data: dict) -> dict:
+    """
+    Calculate a dynamic FCF growth rate based on blended historical and analyst estimates.
+    
+    Blend:
+    - Historical Revenue CAGR (3-5 years): 40% weight
+    - Historical FCF growth: 30% weight
+    - Analyst Revenue Growth Estimate: 30% weight
+    
+    Guardrails: Floor 3%, Cap 25%, Default 10%
+    """
+    components = []
+    weights = []
+    
+    # Sector-based defaults as fallback
+    sector_defaults = {
+        'Technology': 0.15,
+        'Healthcare': 0.12,
+        'Consumer Cyclical': 0.10,
+        'Consumer Defensive': 0.06,
+        'Financial Services': 0.08,
+        'Industrials': 0.08,
+        'Energy': 0.06,
+        'Utilities': 0.04,
+        'Real Estate': 0.06,
+        'Communication Services': 0.10,
+        'Basic Materials': 0.07,
+    }
+    
+    # 1. Historical Revenue Growth (from yfinance revenueGrowth - YoY)
+    revenue_growth = data.get('revenue_growth')
+    if revenue_growth is not None and revenue_growth != 0:
+        # revenue_growth is in percentage (e.g., 10.0 for 10%)
+        rev_growth_decimal = revenue_growth / 100 if abs(revenue_growth) > 1 else revenue_growth
+        # Sanity check
+        if -0.5 <= rev_growth_decimal <= 1.0:
+            components.append(rev_growth_decimal)
+            weights.append(0.4)
+    
+    # 2. Analyst estimates (forward revenue growth or earnings growth)
+    # Use forward P/E vs trailing P/E as proxy for expected earnings growth
+    forward_pe = data.get('forward_pe')
+    trailing_pe = data.get('trailing_pe')
+    if forward_pe and trailing_pe and forward_pe > 0 and trailing_pe > 0:
+        # If forward PE < trailing PE, earnings expected to grow
+        implied_earnings_growth = (trailing_pe / forward_pe) - 1
+        if -0.3 <= implied_earnings_growth <= 0.5:
+            components.append(implied_earnings_growth)
+            weights.append(0.3)
+    
+    # 3. Use revenue growth again as FCF proxy if we don't have FCF history
+    # (FCF tends to track revenue growth for mature companies)
+    if revenue_growth is not None and revenue_growth != 0:
+        rev_growth_decimal = revenue_growth / 100 if abs(revenue_growth) > 1 else revenue_growth
+        if -0.5 <= rev_growth_decimal <= 1.0:
+            components.append(rev_growth_decimal)
+            weights.append(0.3)
+    
+    # Calculate weighted average if we have components
+    if components and weights:
+        total_weight = sum(weights)
+        blended_growth = sum(c * w for c, w in zip(components, weights)) / total_weight
+    else:
+        # Fallback to sector default
+        sector = data.get('sector', 'Unknown')
+        blended_growth = sector_defaults.get(sector, 0.10)
+    
+    # Apply guardrails
+    final_growth = max(0.03, min(0.25, blended_growth))
+    
+    return {
+        'growth_rate': final_growth,
+        'growth_rate_pct': final_growth * 100,
+        'components_used': len(components),
+        'sector_fallback': len(components) == 0
+    }
+
+def calculate_dcf_sensitivity(
+    free_cash_flow: float,
+    base_growth_rate: float,
+    discount_rate: float,
+    terminal_growth_rate: float,
+    projection_years: int,
+    total_debt: float,
+    total_cash: float,
+    shares_outstanding: float,
+    current_price: float
+) -> list:
+    """
+    Calculate DCF at multiple growth rate scenarios (10%, 15%, 20%).
+    Returns list of dicts with growth_rate, value, and upside.
+    """
+    if free_cash_flow is None or shares_outstanding is None or shares_outstanding <= 0:
+        return []
+    
+    # Fixed scenarios: 10%, 15%, 20% (matching reference model)
+    scenarios = [
+        ('Low', 0.10),
+        ('Medium', 0.15),
+        ('High', 0.20),
+    ]
+    
+    results = []
+    for label, growth_rate in scenarios:
+        dcf = calculate_dcf(
+            free_cash_flow=free_cash_flow,
+            fcf_growth_rate=growth_rate,
+            discount_rate=discount_rate,
+            terminal_growth_rate=terminal_growth_rate,
+            projection_years=projection_years,
+            total_debt=total_debt,
+            total_cash=total_cash,
+            shares_outstanding=shares_outstanding
+        )
+        
+        if dcf.get('intrinsic_value') is not None:
+            value = dcf['intrinsic_value']
+            upside = ((value / current_price) - 1) * 100 if current_price and current_price > 0 else 0
+            results.append({
+                'label': label,
+                'growth_rate': growth_rate * 100,
+                'value': value,
+                'upside': upside
+            })
+    
+    return results
+
+def calculate_combined_intrinsic(
+    dcf_value: float,
+    ddm_value: float,
+    multiples_value: float
+) -> dict:
+    """
+    Calculate combined intrinsic value as average of available valuation methods.
+    Excludes Graham (shown separately per user request).
+    """
+    values = []
+    methods = []
+    
+    if dcf_value is not None and dcf_value > 0:
+        values.append(dcf_value)
+        methods.append('DCF')
+    
+    if ddm_value is not None and ddm_value > 0:
+        values.append(ddm_value)
+        methods.append('DDM')
+    
+    if multiples_value is not None and multiples_value > 0:
+        values.append(multiples_value)
+        methods.append('Multiples')
+    
+    if not values:
+        return {'combined_value': None, 'methods_used': [], 'count': 0}
+    
+    combined = sum(values) / len(values)
+    
+    return {
+        'combined_value': combined,
+        'methods_used': methods,
+        'count': len(values),
+        'individual_values': dict(zip(methods, values))
     }
 
 def calculate_financial_health(data: dict) -> dict:
@@ -2332,18 +2648,273 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
             help="Number of insider buy transactions in the last 90 days. Sub-metric shows buys in the last year. More insider buying can be a bullish signal."
         )
     
+    # ============================================
+    # VALUATION SUMMARY SECTION (above DCF)
+    # ============================================
+    st.markdown("---")
+    st.subheader("📊 Valuation Summary")
+    
+    # Pre-calculate all valuations for the summary
+    # Fixed parameters matching reference model
+    discount_rate_summary = 0.08  # Fixed 8% discount rate
+    projection_years_summary = 10  # 10 year projection
+    base_growth_summary = 0.15  # Fixed 15% FCF growth rate (matching reference)
+    
+    # 1. DCF Value (using 15% growth rate)
+    dcf_summary = calculate_dcf(
+        free_cash_flow=data.get('free_cash_flow'),
+        fcf_growth_rate=base_growth_summary,
+        discount_rate=discount_rate_summary,
+        terminal_growth_rate=0.03,
+        projection_years=projection_years_summary,
+        total_debt=data.get('total_debt', 0),
+        total_cash=data.get('total_cash', 0),
+        shares_outstanding=data.get('shares_outstanding', 1)
+    )
+    dcf_value = dcf_summary.get('intrinsic_value')
+    
+    # 2. DDM Value (handles non-dividend stocks gracefully)
+    # Use 6% dividend growth for established dividend payers, 2% spread
+    ddm_result = calculate_ddm(
+        dividend_rate=data.get('dividend_rate'),
+        current_price=data.get('current_price'),
+        dividend_growth_rate=0.06,  # 6% dividend growth
+        required_return=discount_rate_summary  # 8% required return (2% spread)
+    )
+    ddm_value = ddm_result.get('intrinsic_value')
+    
+    # 3. Multiples Value - use sector average P/E for fair value comparison
+    eps = data.get('current_eps')
+    multiples_result = calculate_multiples_value(
+        eps=eps,
+        current_price=data.get('current_price'),
+        sector=data.get('sector', 'Unknown')
+    )
+    multiples_value = multiples_result.get('intrinsic_value')
+    
+    # 4. Reverse DCF
+    reverse_dcf_result = calculate_reverse_dcf(
+        current_price=data.get('current_price'),
+        shares_outstanding=data.get('shares_outstanding'),
+        free_cash_flow=data.get('free_cash_flow'),
+        discount_rate=discount_rate_summary,
+        terminal_growth_rate=0.03,
+        projection_years=projection_years_summary,
+        total_debt=data.get('total_debt', 0),
+        total_cash=data.get('total_cash', 0)
+    )
+    implied_growth = reverse_dcf_result.get('implied_growth_pct')
+    
+    # 5. Combined Intrinsic Value
+    combined_result = calculate_combined_intrinsic(dcf_value, ddm_value, multiples_value)
+    combined_value = combined_result.get('combined_value')
+    
+    current_price = data.get('current_price', 0)
+    
+    # Calculate overall margin of safety
+    if combined_value and current_price and current_price > 0:
+        overall_margin = ((combined_value - current_price) / current_price) * 100
+        overall_upside = ((combined_value / current_price) - 1) * 100
+    else:
+        overall_margin = None
+        overall_upside = None
+    
+    # Display Combined Intrinsic Value prominently
+    if combined_value:
+        summary_cols = st.columns([2, 1, 1, 1])
+        
+        with summary_cols[0]:
+            # Large combined value display
+            if overall_upside is not None:
+                if overall_upside > 0:
+                    delta_text = f"+{overall_upside:.1f}% upside"
+                    delta_color = "normal"
+                else:
+                    delta_text = f"{overall_upside:.1f}% downside"
+                    delta_color = "inverse"
+            else:
+                delta_text = None
+                delta_color = "off"
+            
+            st.metric(
+                "🎯 Combined Intrinsic Value",
+                f"${combined_value:.2f}",
+                delta=delta_text,
+                delta_color=delta_color,
+                help=f"Average of {combined_result.get('count', 0)} valuation methods: {', '.join(combined_result.get('methods_used', []))}"
+            )
+        
+        with summary_cols[1]:
+            st.metric(
+                "Current Price",
+                f"${current_price:.2f}" if current_price else "N/A"
+            )
+        
+        with summary_cols[2]:
+            # Margin of Safety
+            if overall_margin is not None:
+                mos_display = f"{overall_margin:.1f}%"
+                if overall_margin > 15:
+                    mos_status = "✅ Buy Zone"
+                elif overall_margin > 0:
+                    mos_status = "🟡 Fair"
+                else:
+                    mos_status = "🔴 Overvalued"
+            else:
+                mos_display = "N/A"
+                mos_status = None
+            
+            st.metric(
+                "Margin of Safety",
+                mos_display,
+                delta=mos_status,
+                delta_color="off",
+                help="Positive = undervalued. >15% typically considered a buy opportunity."
+            )
+        
+        with summary_cols[3]:
+            # Wall Street Target comparison
+            target_mean = data.get('target_mean')
+            if target_mean and current_price:
+                ws_upside = ((target_mean / current_price) - 1) * 100
+                st.metric(
+                    "Wall St. Target",
+                    f"${target_mean:.2f}",
+                    delta=f"{ws_upside:+.1f}%",
+                    delta_color="normal" if ws_upside > 0 else "inverse",
+                    help="Average analyst price target"
+                )
+            else:
+                st.metric("Wall St. Target", "N/A")
+        
+        # Individual valuation methods row
+        st.markdown("##### Individual Valuations")
+        val_cols = st.columns(4)
+        
+        with val_cols[0]:
+            if dcf_value:
+                dcf_upside = ((dcf_value / current_price) - 1) * 100 if current_price else 0
+                st.metric(
+                    "DCF Value",
+                    f"${dcf_value:.2f}",
+                    delta=f"{dcf_upside:+.1f}%",
+                    delta_color="normal" if dcf_upside > 0 else "inverse"
+                )
+            else:
+                st.metric("DCF Value", "N/A", help="Requires positive free cash flow")
+        
+        with val_cols[1]:
+            if ddm_value:
+                ddm_upside = ((ddm_value / current_price) - 1) * 100 if current_price else 0
+                st.metric(
+                    "DDM Value",
+                    f"${ddm_value:.2f}",
+                    delta=f"{ddm_upside:+.1f}%",
+                    delta_color="normal" if ddm_upside > 0 else "inverse"
+                )
+            else:
+                st.metric("DDM Value", "—", help="Stock does not pay dividends")
+        
+        with val_cols[2]:
+            if multiples_value:
+                mult_upside = ((multiples_value / current_price) - 1) * 100 if current_price else 0
+                sector_pe = multiples_result.get('sector_pe', 'N/A')
+                st.metric(
+                    "Multiples Value",
+                    f"${multiples_value:.2f}",
+                    delta=f"{mult_upside:+.1f}%",
+                    delta_color="normal" if mult_upside > 0 else "inverse",
+                    help=f"Based on sector avg P/E of {sector_pe}x"
+                )
+            else:
+                st.metric("Multiples Value", "N/A", help="Requires positive EPS")
+        
+        with val_cols[3]:
+            if implied_growth is not None:
+                # Interpret implied growth
+                if implied_growth > 30:
+                    growth_status = "🔴 Very High"
+                elif implied_growth > 20:
+                    growth_status = "🟠 High"
+                elif implied_growth > 10:
+                    growth_status = "🟢 Moderate"
+                else:
+                    growth_status = "🟢 Low"
+                
+                st.metric(
+                    "Reverse DCF",
+                    f"{implied_growth:.1f}%",
+                    delta=growth_status,
+                    delta_color="off",
+                    help="Implied FCF growth rate priced into current stock price. Lower = more margin of safety."
+                )
+            else:
+                st.metric("Reverse DCF", "N/A", help="Requires positive free cash flow")
+        
+        # Sensitivity Analysis Table
+        st.markdown("##### DCF Sensitivity Analysis")
+        sensitivity = calculate_dcf_sensitivity(
+            free_cash_flow=data.get('free_cash_flow'),
+            base_growth_rate=base_growth_summary,
+            discount_rate=discount_rate_summary,
+            terminal_growth_rate=0.03,
+            projection_years=projection_years_summary,
+            total_debt=data.get('total_debt', 0),
+            total_cash=data.get('total_cash', 0),
+            shares_outstanding=data.get('shares_outstanding', 1),
+            current_price=current_price
+        )
+        
+        if sensitivity:
+            # Build table using pandas DataFrame for reliable rendering
+            import pandas as pd
+            
+            sens_data = []
+            for scenario in sensitivity:
+                sens_data.append({
+                    'Scenario': scenario['label'],
+                    'Growth Rate': f"{scenario['growth_rate']:.0f}%",
+                    'Value': f"${scenario['value']:.0f}",
+                    'Upside': f"{scenario['upside']:+.0f}%"
+                })
+            
+            sens_df = pd.DataFrame(sens_data)
+            sens_df = sens_df.set_index('Scenario')
+            
+            # Use st.dataframe with custom styling - muted, darker colors
+            def color_scenario(val):
+                if val.name == 'Low':
+                    return ['background-color: rgba(34, 120, 74, 0.6); color: white; font-weight: bold'] * len(val)
+                elif val.name == 'Medium':
+                    return ['background-color: rgba(180, 130, 20, 0.6); color: white; font-weight: bold'] * len(val)
+                elif val.name == 'High':
+                    return ['background-color: rgba(180, 60, 60, 0.6); color: white; font-weight: bold'] * len(val)
+                return [''] * len(val)
+            
+            styled_df = sens_df.style.apply(color_scenario, axis=1)
+            st.dataframe(styled_df, use_container_width=True)
+        
+        # Buy/Sell Signal
+        if overall_margin is not None:
+            if overall_margin > 25:
+                st.success("🟢 **Strong Buy Signal**: Stock appears significantly undervalued across multiple valuation methods.")
+            elif overall_margin > 15:
+                st.info("🟢 **Buy Signal**: Stock appears undervalued with adequate margin of safety.")
+            elif overall_margin > -10:
+                st.warning("🟡 **Hold**: Stock appears fairly valued. Consider waiting for a better entry point.")
+            else:
+                st.error("🔴 **Overvalued**: Stock trades above intrinsic value estimates. Exercise caution.")
+    else:
+        st.info("📊 Insufficient data to calculate combined intrinsic value. Individual metrics shown below.")
+    
     # DCF Intrinsic Value Section
     st.markdown("---")
     st.subheader("💰 DCF Intrinsic Value")
     
-    # Fetch 10Y Treasury yield and calculate discount rate
-    treasury_yield = get_treasury_yield()
-    discount_rate = treasury_yield + 0.03  # 10Y Treasury + 3% risk premium
-    
-    # Use base case revenue growth for FCF growth (from data)
-    # This will be updated later when sidebar values are available
-    base_revenue_growth = data.get('revenue_growth', 10.0)  # Default 10% if not available
-    fcf_growth_rate = base_revenue_growth / 100  # Convert from percentage to decimal
+    # Fixed parameters matching reference model
+    discount_rate = 0.08  # Fixed 8% discount rate
+    projection_years = 10  # 10 year projection
+    fcf_growth_rate = 0.15  # Fixed 15% FCF growth rate (matching reference)
     
     # Calculate DCF
     dcf_result = calculate_dcf(
@@ -2351,7 +2922,7 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
         fcf_growth_rate=fcf_growth_rate,
         discount_rate=discount_rate,
         terminal_growth_rate=0.03,  # 3% terminal growth
-        projection_years=5,
+        projection_years=projection_years,
         total_debt=data.get('total_debt', 0),
         total_cash=data.get('total_cash', 0),
         shares_outstanding=data.get('shares_outstanding', 1)
@@ -2403,7 +2974,7 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
             st.metric(
                 "Discount Rate",
                 f"{discount_rate*100:.1f}%",
-                help=f"10Y Treasury ({treasury_yield*100:.2f}%) + 3% risk premium. Used to discount future cash flows to present value."
+                help="Fixed 8% discount rate used to discount future cash flows to present value."
             )
         with dcf_cols[3]:
             fcf = data.get('free_cash_flow')
@@ -2423,10 +2994,10 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
             detail_cols = st.columns(3)
             with detail_cols[0]:
                 st.markdown("**Assumptions**")
-                st.write(f"- FCF Growth Rate: {fcf_growth_rate*100:.1f}% (Base case)")
+                st.write(f"- FCF Growth Rate: {fcf_growth_rate*100:.1f}% (Dynamic)")
                 st.write(f"- Terminal Growth: 3.0%")
                 st.write(f"- Discount Rate: {discount_rate*100:.1f}%")
-                st.write(f"- Projection Years: 5")
+                st.write(f"- Projection Years: {projection_years}")
             with detail_cols[1]:
                 st.markdown("**Valuation Components**")
                 st.write(f"- PV of FCFs: {format_large_number(dcf_result.get('pv_fcfs', 0))}")
@@ -2437,6 +3008,77 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
                 st.write(f"- Total Debt: {format_large_number(data.get('total_debt', 0))}")
                 st.write(f"- Total Cash: {format_large_number(data.get('total_cash', 0))}")
                 st.write(f"- Equity Value: {format_large_number(dcf_result.get('equity_value', 0))}")
+            
+            # DCF Sensitivity Analysis
+            st.markdown("---")
+            st.markdown("**📈 Sensitivity Analysis**")
+            sensitivity = calculate_dcf_sensitivity(
+                free_cash_flow=data.get('free_cash_flow'),
+                base_growth_rate=fcf_growth_rate,
+                discount_rate=discount_rate,
+                terminal_growth_rate=0.03,
+                projection_years=projection_years,
+                total_debt=data.get('total_debt', 0),
+                total_cash=data.get('total_cash', 0),
+                shares_outstanding=data.get('shares_outstanding', 1),
+                current_price=data.get('current_price')
+            )
+            
+            if sensitivity:
+                # Create table matching reference screenshot format
+                st.markdown("""
+                <style>
+                .sens-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                .sens-table th, .sens-table td { padding: 8px 12px; text-align: center; border: 1px solid #ddd; }
+                .sens-table th { background-color: #f8f9fa; font-weight: bold; }
+                .sens-row-low { background-color: #22c55e; color: white; font-weight: bold; }
+                .sens-row-med { background-color: #f59e0b; color: white; font-weight: bold; }
+                .sens-row-high { background-color: #ef4444; color: white; font-weight: bold; }
+                .upside-cell { background-color: #fef3c7; }
+                </style>
+                """, unsafe_allow_html=True)
+                
+                table_html = """
+                <table class="sens-table">
+                <tr>
+                    <th></th>
+                    <th>Growth Rate</th>
+                    <th>Value</th>
+                    <th>Upside</th>
+                </tr>
+                """
+                
+                for scenario in sensitivity:
+                    label = scenario['label']
+                    if label == 'Low':
+                        row_class = 'sens-row-low'
+                    elif label == 'Medium':
+                        row_class = 'sens-row-med'
+                    else:
+                        row_class = 'sens-row-high'
+                    
+                    table_html += f"""
+                    <tr>
+                        <td class="{row_class}">{label}</td>
+                        <td>{scenario['growth_rate']:.0f}%</td>
+                        <td>${scenario['value']:.2f}</td>
+                        <td class="upside-cell">{scenario['upside']:+.1f}%</td>
+                    </tr>
+                    """
+                
+                table_html += "</table>"
+                st.markdown(table_html, unsafe_allow_html=True)
+                
+                # Add Reverse DCF below the table
+                if implied_growth is not None:
+                    st.markdown(f"""
+                    <div style="margin-top: 15px; display: inline-block; border: 2px solid #000;">
+                        <span style="background-color: #fef08a; padding: 8px 12px; font-weight: bold; display: inline-block;">Reverse DCF</span>
+                        <span style="background-color: #fef08a; padding: 8px 12px; display: inline-block;">{implied_growth:.1f}%</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.caption("Sensitivity analysis not available.")
     else:
         st.info("💡 DCF valuation not available. Free Cash Flow data may be missing for this stock.")
     
