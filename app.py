@@ -466,9 +466,15 @@ def fetch_stock_data(ticker: str) -> dict:
         revenue_growth = None
         historical_data = []  # Store historical years data
         
+        ebit = None  # For Magic Formula calculations
         if income_stmt is not None and not income_stmt.empty:
             total_revenue = income_stmt.loc['Total Revenue'].iloc[0] if 'Total Revenue' in income_stmt.index else None
             net_income = income_stmt.loc['Net Income'].iloc[0] if 'Net Income' in income_stmt.index else None
+            # Extract EBIT (Operating Income) for Magic Formula
+            if 'EBIT' in income_stmt.index:
+                ebit = income_stmt.loc['EBIT'].iloc[0]
+            elif 'Operating Income' in income_stmt.index:
+                ebit = income_stmt.loc['Operating Income'].iloc[0]
             # Get the fiscal year from the most recent column
             fiscal_year = income_stmt.columns[0].year if hasattr(income_stmt.columns[0], 'year') else None
             # Calculate revenue growth from last 2 years
@@ -813,6 +819,7 @@ def fetch_stock_data(ticker: str) -> dict:
             'current_assets': current_assets,
             'current_liabilities': current_liabilities,
             'ebitda': ebitda,
+            'ebit': ebit,  # For Magic Formula calculations
             'total_assets': total_assets,
             'retained_earnings': retained_earnings,
             # Graham Value data
@@ -2578,8 +2585,48 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
             else:
                 st.info("No SEC filings found. This may be a non-US company or the ticker may not be registered with the SEC.")
     
+    # Calculate Magic Formula metrics
+    earnings_yield = None
+    return_on_capital = None
+    ebit = data.get('ebit')
+    enterprise_value = data.get('enterprise_value')
+    total_assets = data.get('total_assets')
+    current_liabilities = data.get('current_liabilities')
+    
+    # Fallback: Calculate Enterprise Value if not provided (EV = Market Cap + Debt - Cash)
+    if enterprise_value is None:
+        market_cap = data.get('market_cap')
+        total_debt = data.get('total_debt', 0) or 0
+        total_cash = data.get('total_cash', 0) or 0
+        if market_cap:
+            enterprise_value = market_cap + total_debt - total_cash
+    
+    # Get cash from balance sheet (more accurate than info.totalCash which includes short-term investments)
+    balance_sheet = data.get('balance_sheet')
+    cash_for_roc = 0
+    if balance_sheet is not None and not balance_sheet.empty:
+        try:
+            latest_col = balance_sheet.columns[0]
+            if 'Cash And Cash Equivalents' in balance_sheet.index:
+                cash_for_roc = balance_sheet.loc['Cash And Cash Equivalents', latest_col] or 0
+        except:
+            pass
+    if cash_for_roc == 0:
+        cash_for_roc = data.get('total_cash', 0) or 0
+    
+    # Earnings Yield = EBIT / Enterprise Value
+    if ebit and enterprise_value and enterprise_value > 0:
+        earnings_yield = (ebit / enterprise_value) * 100
+    
+    # Return on Capital = EBIT / (Total Assets - Current Liabilities - Cash)
+    # Uses Greenblatt's definition of invested capital
+    if ebit and total_assets and current_liabilities is not None:
+        invested_capital = total_assets - (current_liabilities or 0) - cash_for_roc
+        if invested_capital > 0:
+            return_on_capital = (ebit / invested_capital) * 100
+    
     # Current metrics
-    m1, m2, m3, m4, m5, m6 = st.columns(6)
+    m1, m2, m3, m4, m5, m6, m7, m8 = st.columns(8)
     with m1:
         st.metric("Current Price", format_currency(data['current_price']), help="The latest trading price of the stock. This is the baseline for calculating future returns.")
     with m2:
@@ -2646,6 +2693,18 @@ if 'stock_data' in st.session_state and st.session_state.stock_data.get('success
             delta=delta_text,
             delta_color=delta_color,
             help="Number of insider buy transactions in the last 90 days. Sub-metric shows buys in the last year. More insider buying can be a bullish signal."
+        )
+    with m7:
+        st.metric(
+            "Earnings Yield",
+            f"{earnings_yield:.1f}%" if earnings_yield is not None else "N/A",
+            help="Magic Formula metric: EBIT / Enterprise Value. Measures how cheap the stock is relative to its operating earnings. Higher is better (cheaper). Part of Joel Greenblatt's Magic Formula."
+        )
+    with m8:
+        st.metric(
+            "Return on Capital",
+            f"{return_on_capital:.1f}%" if return_on_capital is not None else "N/A",
+            help="Magic Formula metric: EBIT / Invested Capital (Total Assets - Current Liabilities - Cash). Measures how efficiently the company generates profits from its capital. Higher is better. Part of Joel Greenblatt's Magic Formula."
         )
     
     # ============================================
