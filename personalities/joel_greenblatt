@@ -1,0 +1,1159 @@
+# Joel Greenblatt Investment Strategy Guide
+
+## Overview
+Joel Greenblatt is a legendary value investor who achieved 40% annual returns over 20+ years at Gotham Capital before returning outside capital. He's best known for creating the "Magic Formula" - a simple, quantitative approach that combines quality (high return on capital) with value (low earnings yield). Greenblatt's philosophy bridges Graham's statistical value investing with Buffett's focus on business quality, creating a systematic method that any investor can follow without requiring deep business expertise.
+
+## Core Investment Philosophy
+
+**Quality + Value + Systematic Discipline = Market-Beating Returns**
+
+Greenblatt's approach is built on:
+1. Companies must be high quality (measured by return on capital)
+2. Companies must be cheap (measured by earnings yield)
+3. System must be mechanical and unemotional
+4. Must hold 20-30 stocks to diversify specific company risk
+5. Must hold for 1+ year to allow value realization
+6. Must have discipline to continue when underperforming
+
+## The Magic Formula Explained
+
+### Core Concept
+Buy good companies (high returns on capital) at bargain prices (high earnings yield). The formula ranks all stocks by these two metrics and buys the top-ranked combinations.
+
+### Why It Works
+- **High ROIC** = Quality business with competitive advantages
+- **High Earnings Yield** = Cheap valuation
+- **Combination** = Avoids value traps (cheap but dying) and expensive quality (good but overpriced)
+
+### The Two Magic Formula Metrics
+
+#### 1. Return on Capital (ROC/ROIC)
+**Formula:** EBIT / (Net Working Capital + Net Fixed Assets)
+
+**What it measures:** How efficiently a company generates profits from its invested capital
+
+**Why it matters:** 
+- High ROC = competitive advantages (brands, patents, network effects, economies of scale)
+- Companies that earn high returns can reinvest at high rates → compounding
+- Separates great businesses from mediocre ones
+
+**yfinance calculation:**
+```python
+import yfinance as yf
+
+def calculate_return_on_capital(ticker_symbol):
+    """
+    Calculate Greenblatt's Return on Capital
+    """
+    ticker = yf.Ticker(ticker_symbol)
+    financials = ticker.financials
+    balance_sheet = ticker.balance_sheet
+    
+    try:
+        # EBIT (Earnings Before Interest and Taxes)
+        ebit = financials.loc['EBIT'].iloc[0]
+        
+        # Net Working Capital = Current Assets - Current Liabilities
+        current_assets = balance_sheet.loc['Current Assets'].iloc[0]
+        current_liabilities = balance_sheet.loc['Current Liabilities'].iloc[0]
+        net_working_capital = current_assets - current_liabilities
+        
+        # Net Fixed Assets (Property, Plant & Equipment)
+        # Some companies call it 'Net PPE' or 'Property Plant Equipment'
+        try:
+            net_fixed_assets = balance_sheet.loc['Net PPE'].iloc[0]
+        except:
+            try:
+                ppe_gross = balance_sheet.loc['Gross PPE'].iloc[0]
+                accumulated_depreciation = balance_sheet.loc['Accumulated Depreciation'].iloc[0]
+                net_fixed_assets = ppe_gross + accumulated_depreciation  # Accumulated dep is negative
+            except:
+                # Fallback: use total assets - current assets as proxy
+                total_assets = balance_sheet.loc['Total Assets'].iloc[0]
+                net_fixed_assets = total_assets - current_assets
+        
+        # Tangible Capital Employed
+        tangible_capital = net_working_capital + net_fixed_assets
+        
+        # Return on Capital
+        if tangible_capital > 0:
+            roc = ebit / tangible_capital
+            return {
+                'roc': roc * 100,
+                'ebit': ebit,
+                'net_working_capital': net_working_capital,
+                'net_fixed_assets': net_fixed_assets,
+                'tangible_capital': tangible_capital
+            }
+        else:
+            return None
+    except Exception as e:
+        print(f"Error calculating ROC: {e}")
+        return None
+
+# Example
+result = calculate_return_on_capital('AAPL')
+if result:
+    print(f"Return on Capital: {result['roc']:.2f}%")
+```
+
+**Target:** ROC > 25% is excellent, > 15% is good
+
+**Greenblatt's insight:** Traditional ROE can be misleading because it includes goodwill and intangibles from acquisitions. His ROC focuses on tangible assets actually deployed in the business.
+
+#### 2. Earnings Yield
+**Formula:** EBIT / Enterprise Value
+
+**What it measures:** The pretax earnings return you'd get if you bought the entire company
+
+**Why it matters:**
+- Better than P/E ratio because it accounts for debt
+- Uses EBIT (before interest and taxes) to compare companies with different capital structures
+- Can compare across asset classes (stocks vs bonds)
+
+**yfinance calculation:**
+```python
+def calculate_earnings_yield(ticker_symbol):
+    """
+    Calculate Greenblatt's Earnings Yield
+    """
+    ticker = yf.Ticker(ticker_symbol)
+    info = ticker.info
+    financials = ticker.financials
+    
+    try:
+        # EBIT
+        ebit = financials.loc['EBIT'].iloc[0]
+        
+        # Enterprise Value = Market Cap + Total Debt - Cash
+        enterprise_value = info.get('enterpriseValue')
+        
+        if not enterprise_value:
+            # Calculate manually
+            market_cap = info['marketCap']
+            total_debt = info.get('totalDebt', 0)
+            total_cash = info.get('totalCash', 0)
+            enterprise_value = market_cap + total_debt - total_cash
+        
+        # Earnings Yield
+        if enterprise_value > 0:
+            earnings_yield = ebit / enterprise_value
+            return {
+                'earnings_yield': earnings_yield * 100,
+                'ebit': ebit,
+                'enterprise_value': enterprise_value,
+                'inverse_pe': 1 / (enterprise_value / ebit)  # For comparison
+            }
+        else:
+            return None
+    except Exception as e:
+        print(f"Error calculating Earnings Yield: {e}")
+        return None
+
+# Example
+result = calculate_earnings_yield('AAPL')
+if result:
+    print(f"Earnings Yield: {result['earnings_yield']:.2f}%")
+```
+
+**Target:** Earnings Yield > 10% is attractive (equivalent to P/E < 10 roughly)
+
+**Greenblatt's insight:** By using EV instead of market cap, you account for debt. A company with $100M market cap and $50M debt is more expensive than one with $100M market cap and $50M cash, even though both have same stock price.
+
+### The Magic Formula Ranking System
+
+**Step 1:** Rank all stocks by Return on Capital (highest = 1, lowest = last)
+
+**Step 2:** Rank all stocks by Earnings Yield (highest = 1, lowest = last)
+
+**Step 3:** Add the two rankings together for each stock
+
+**Step 4:** Buy the stocks with the lowest combined ranking (best combination of quality + value)
+
+**Example:**
+```
+Stock A: ROC rank = 50, EY rank = 30, Combined = 80
+Stock B: ROC rank = 10, EY rank = 100, Combined = 110
+Stock C: ROC rank = 200, EY rank = 5, Combined = 205
+
+Ranking: A (80) > B (110) > C (205)
+Buy Stock A first (best combo of quality and value)
+```
+
+## Complete Implementation Guide
+
+### Step 1: Screen the Universe
+
+**Minimum criteria (filters before ranking):**
+```python
+def magic_formula_screen(ticker_symbol):
+    """
+    Pre-screen stocks before applying Magic Formula
+    """
+    ticker = yf.Ticker(ticker_symbol)
+    info = ticker.info
+    
+    # Exclude financials and utilities (different capital structure)
+    sector = info.get('sector')
+    if sector in ['Financial Services', 'Financials', 'Utilities']:
+        return False
+    
+    # Minimum market cap ($100M or $1B depending on your preference)
+    market_cap = info.get('marketCap')
+    if not market_cap or market_cap < 100_000_000:  # $100M minimum
+        return False
+    
+    # Must have positive earnings (EBIT > 0)
+    try:
+        financials = ticker.financials
+        ebit = financials.loc['EBIT'].iloc[0]
+        if ebit <= 0:
+            return False
+    except:
+        return False
+    
+    # Must have positive enterprise value
+    ev = info.get('enterpriseValue')
+    if not ev or ev <= 0:
+        return False
+    
+    # Exclude ADRs and foreign stocks (if you want US only)
+    country = info.get('country')
+    if country != 'United States':
+        return False
+    
+    return True
+```
+
+### Step 2: Calculate Both Metrics
+
+```python
+def calculate_magic_formula_metrics(ticker_symbol):
+    """
+    Calculate both ROC and Earnings Yield
+    """
+    ticker = yf.Ticker(ticker_symbol)
+    info = ticker.info
+    financials = ticker.financials
+    balance_sheet = ticker.balance_sheet
+    
+    try:
+        # Get EBIT
+        ebit = financials.loc['EBIT'].iloc[0]
+        
+        # Calculate ROC
+        current_assets = balance_sheet.loc['Current Assets'].iloc[0]
+        current_liabilities = balance_sheet.loc['Current Liabilities'].iloc[0]
+        net_working_capital = current_assets - current_liabilities
+        
+        try:
+            net_fixed_assets = balance_sheet.loc['Net PPE'].iloc[0]
+        except:
+            total_assets = balance_sheet.loc['Total Assets'].iloc[0]
+            net_fixed_assets = total_assets - current_assets
+        
+        tangible_capital = net_working_capital + net_fixed_assets
+        
+        if tangible_capital <= 0:
+            return None
+        
+        roc = (ebit / tangible_capital) * 100
+        
+        # Calculate Earnings Yield
+        enterprise_value = info.get('enterpriseValue')
+        if not enterprise_value or enterprise_value <= 0:
+            market_cap = info.get('marketCap')
+            total_debt = info.get('totalDebt', 0)
+            total_cash = info.get('totalCash', 0)
+            enterprise_value = market_cap + total_debt - total_cash
+        
+        earnings_yield = (ebit / enterprise_value) * 100
+        
+        return {
+            'ticker': ticker_symbol,
+            'company_name': info.get('longName', ticker_symbol),
+            'sector': info.get('sector'),
+            'market_cap': info.get('marketCap'),
+            'roc': roc,
+            'earnings_yield': earnings_yield,
+            'ebit': ebit,
+            'enterprise_value': enterprise_value,
+            'tangible_capital': tangible_capital
+        }
+    
+    except Exception as e:
+        print(f"Error calculating metrics for {ticker_symbol}: {e}")
+        return None
+```
+
+### Step 3: Rank and Score
+
+```python
+import pandas as pd
+
+def magic_formula_ranker(ticker_list):
+    """
+    Calculate Magic Formula rankings for a list of tickers
+    """
+    results = []
+    
+    # Calculate metrics for all stocks
+    for ticker in ticker_list:
+        if magic_formula_screen(ticker):
+            metrics = calculate_magic_formula_metrics(ticker)
+            if metrics:
+                results.append(metrics)
+    
+    if not results:
+        return pd.DataFrame()
+    
+    # Create DataFrame
+    df = pd.DataFrame(results)
+    
+    # Rank by ROC (higher is better, so ascending=False)
+    df['roc_rank'] = df['roc'].rank(ascending=False)
+    
+    # Rank by Earnings Yield (higher is better, so ascending=False)
+    df['ey_rank'] = df['earnings_yield'].rank(ascending=False)
+    
+    # Combined rank (lower is better)
+    df['combined_rank'] = df['roc_rank'] + df['ey_rank']
+    
+    # Sort by combined rank
+    df = df.sort_values('combined_rank')
+    
+    # Add percentile scores for easier interpretation
+    df['roc_percentile'] = df['roc'].rank(pct=True) * 100
+    df['ey_percentile'] = df['earnings_yield'].rank(pct=True) * 100
+    
+    return df
+
+# Example: Screen S&P 500
+import yfinance as yf
+
+# Get S&P 500 tickers (you'd need to get this list)
+sp500_tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'BRK-B', 'NVDA', 'JPM', 
+                 'V', 'JNJ', 'WMT', 'PG', 'MA', 'HD', 'DIS', 'BAC', 'NFLX', 'CSCO']
+
+# Run Magic Formula
+results = magic_formula_ranker(sp500_tickers)
+
+# Show top 20 stocks
+print(results.head(20)[['ticker', 'company_name', 'roc', 'earnings_yield', 
+                        'combined_rank', 'market_cap']])
+```
+
+### Step 4: Portfolio Construction
+
+**Greenblatt's recommended approach:**
+
+```python
+def build_magic_formula_portfolio(ranked_df, num_positions=20):
+    """
+    Build a Magic Formula portfolio
+    
+    Greenblatt recommends:
+    - 20-30 stocks for proper diversification
+    - Equal weight each position
+    - Buy 2-3 new positions per month (spread purchases over year)
+    - Hold for 1 year minimum (tax efficiency + let value realize)
+    """
+    
+    # Take top N stocks
+    portfolio = ranked_df.head(num_positions).copy()
+    
+    # Equal weight
+    portfolio['weight'] = 1.0 / num_positions
+    
+    # Display portfolio
+    print(f"\nMAGIC FORMULA PORTFOLIO ({num_positions} stocks)")
+    print("="*80)
+    
+    for idx, row in portfolio.iterrows():
+        print(f"{row['ticker']:6} | ROC: {row['roc']:6.1f}% | "
+              f"EY: {row['earnings_yield']:6.2f}% | "
+              f"Rank: {row['combined_rank']:6.1f} | "
+              f"Weight: {row['weight']*100:.1f}%")
+    
+    print("\nPortfolio Statistics:")
+    print(f"Average ROC: {portfolio['roc'].mean():.1f}%")
+    print(f"Average Earnings Yield: {portfolio['earnings_yield'].mean():.2f}%")
+    print(f"Total Market Cap: ${portfolio['market_cap'].sum()/1e9:.1f}B")
+    
+    return portfolio
+
+# Build portfolio
+portfolio = build_magic_formula_portfolio(results, num_positions=20)
+```
+
+## Key Implementation Details
+
+### 1. Sector Diversification
+**Problem:** Magic Formula can get concentrated in certain sectors
+
+**Solution:**
+```python
+def build_diversified_mf_portfolio(ranked_df, num_positions=20, max_per_sector=5):
+    """
+    Build portfolio with sector constraints
+    """
+    portfolio = []
+    sector_counts = {}
+    
+    for idx, row in ranked_df.iterrows():
+        sector = row['sector']
+        
+        # Check sector limit
+        if sector_counts.get(sector, 0) >= max_per_sector:
+            continue
+        
+        # Add to portfolio
+        portfolio.append(row)
+        sector_counts[sector] = sector_counts.get(sector, 0) + 1
+        
+        # Stop when we have enough positions
+        if len(portfolio) >= num_positions:
+            break
+    
+    return pd.DataFrame(portfolio)
+```
+
+### 2. Rebalancing Schedule
+
+**Greenblatt's recommendation:**
+- **Frequency:** Rebalance annually
+- **Method:** Sell losers just before 1-year mark (tax loss harvesting), winners just after (long-term capital gains)
+- **Purchases:** Spread new purchases over 9-12 months (2-3 per month)
+
+```python
+from datetime import datetime, timedelta
+
+def create_rebalancing_schedule(portfolio, start_date):
+    """
+    Create staggered purchase schedule
+    """
+    schedule = []
+    num_stocks = len(portfolio)
+    stocks_per_month = max(2, num_stocks // 12)  # At least 2 per month
+    
+    current_date = start_date
+    
+    for i in range(0, num_stocks, stocks_per_month):
+        batch = portfolio.iloc[i:i+stocks_per_month]
+        for idx, stock in batch.iterrows():
+            schedule.append({
+                'date': current_date,
+                'action': 'BUY',
+                'ticker': stock['ticker'],
+                'weight': stock['weight']
+            })
+        current_date += timedelta(days=30)  # Next month
+    
+    return pd.DataFrame(schedule)
+```
+
+### 3. Position Sizing
+
+**Greenblatt's approach:** Equal weight
+```python
+# Simple equal weight
+weight_per_position = 1.0 / 20  # 5% each for 20 stocks
+
+# With cash reserves (if you want to keep some dry powder)
+invested_percent = 0.90  # Invest 90%, keep 10% cash
+weight_per_position = invested_percent / 20  # 4.5% each
+```
+
+**Alternative approach:** Weight by ranking
+```python
+def rank_weighted_portfolio(ranked_df, num_positions=20):
+    """
+    Weight more heavily toward top-ranked stocks
+    """
+    portfolio = ranked_df.head(num_positions).copy()
+    
+    # Inverse ranking weights (top ranked = highest weight)
+    portfolio['rank_score'] = num_positions - range(num_positions)
+    total_score = portfolio['rank_score'].sum()
+    portfolio['weight'] = portfolio['rank_score'] / total_score
+    
+    return portfolio
+```
+
+## Complete yfinance Data Dictionary (Greenblatt Focus)
+
+```python
+ticker = yf.Ticker("SYMBOL")
+info = ticker.info
+financials = ticker.financials
+balance_sheet = ticker.balance_sheet
+
+# Core Magic Formula Inputs
+magic_formula_data = {
+    # For EBIT (numerator of both metrics)
+    'ebit': financials.loc['EBIT'].iloc[0],
+    
+    # For Return on Capital (denominator)
+    'current_assets': balance_sheet.loc['Current Assets'].iloc[0],
+    'current_liabilities': balance_sheet.loc['Current Liabilities'].iloc[0],
+    'net_ppe': balance_sheet.loc['Net PPE'].iloc[0],  # or 'Property Plant Equipment'
+    
+    # For Earnings Yield (denominator)
+    'enterprise_value': info['enterpriseValue'],
+    'market_cap': info['marketCap'],
+    'total_debt': info.get('totalDebt', 0),
+    'total_cash': info.get('totalCash', 0)
+}
+
+# Screening criteria
+screening_data = {
+    'sector': info['sector'],
+    'industry': info['industry'],
+    'market_cap': info['marketCap'],
+    'country': info.get('country'),
+    'exchange': info.get('exchange')
+}
+
+# Additional quality metrics (nice to have)
+quality_metrics = {
+    'profit_margins': info.get('profitMargins'),
+    'operating_margins': info.get('operatingMargins'),
+    'revenue_growth': info.get('revenueGrowth'),
+    'earnings_growth': info.get('earningsGrowth'),
+    'free_cashflow': info.get('freeCashflow'),
+    'return_on_equity': info.get('returnOnEquity'),
+    'debt_to_equity': info.get('debtToEquity')
+}
+
+# Historical data for consistency checks
+historical_financials = {
+    'revenue_history': financials.loc['Total Revenue'],
+    'ebit_history': financials.loc['EBIT'],
+    'net_income_history': financials.loc['Net Income']
+}
+```
+
+## Greenblatt's Key Modifications & Insights
+
+### 1. Why Not Use Standard Metrics?
+
+**Traditional P/E vs Earnings Yield:**
+```python
+# Traditional P/E has problems:
+# - Doesn't account for debt
+# - Can't compare companies with different capital structures
+# - Uses net income which can be manipulated
+
+traditional_pe = info['trailingPE']
+
+# Greenblatt's Earnings Yield is better:
+# - Uses EBIT (before financing decisions)
+# - Uses EV (accounts for debt)
+# - Comparable across all companies
+
+earnings_yield = ebit / enterprise_value
+```
+
+**Traditional ROE vs Return on Capital:**
+```python
+# Traditional ROE has problems:
+# - Includes goodwill from acquisitions (inflates denominator)
+# - Can be boosted with leverage
+# - Doesn't reflect capital actually deployed in business
+
+traditional_roe = info['returnOnEquity']
+
+# Greenblatt's ROC is better:
+# - Uses tangible capital actually deployed
+# - Excludes excess cash and goodwill
+# - Shows true operating efficiency
+
+roc = ebit / (net_working_capital + net_fixed_assets)
+```
+
+### 2. Why Exclude Financials & Utilities?
+
+```python
+def should_exclude_sector(sector):
+    """
+    Greenblatt excludes these sectors
+    """
+    excluded = ['Financial Services', 'Financials', 'Utilities']
+    
+    # Financials: Balance sheet IS the business (not capital deployed IN business)
+    # Utilities: Regulated returns, different economics
+    
+    return sector in excluded
+```
+
+### 3. Handling Edge Cases
+
+**Negative Working Capital (Greenblatt loves these!):**
+```python
+# Some great businesses have negative working capital
+# Examples: Amazon, Costco collect cash before paying suppliers
+
+net_working_capital = current_assets - current_liabilities
+
+if net_working_capital < 0:
+    # This is GOOD! Company doesn't need capital to grow
+    # But cap at zero for ROC calculation to avoid division issues
+    net_working_capital_adjusted = max(net_working_capital, 0)
+```
+
+**Excess Cash:**
+```python
+# Companies hoarding cash aren't deploying it efficiently
+# Greenblatt suggests excluding excess cash from capital base
+
+total_cash = balance_sheet.loc['Cash And Cash Equivalents'].iloc[0]
+current_liabilities = balance_sheet.loc['Current Liabilities'].iloc[0]
+
+# Excess cash = cash beyond what's needed for operations
+excess_cash = max(0, total_cash - current_liabilities)
+
+# Subtract from tangible capital
+adjusted_capital = tangible_capital - excess_cash
+```
+
+**One-Time Charges:**
+```python
+# Greenblatt uses trailing 12-month operating earnings
+# Ignore one-time charges/gains
+
+# This is harder to do programmatically, but look for:
+# - Restructuring charges
+# - Asset impairments
+# - Litigation settlements
+# - Large one-time gains
+
+# You might need to manually adjust EBIT for these
+```
+
+## Complete Magic Formula Screener
+
+```python
+import yfinance as yf
+import pandas as pd
+import numpy as np
+from datetime import datetime
+
+class MagicFormulaScreener:
+    """
+    Complete implementation of Greenblatt's Magic Formula
+    """
+    
+    def __init__(self, min_market_cap=100_000_000):
+        self.min_market_cap = min_market_cap
+        self.excluded_sectors = ['Financial Services', 'Financials', 'Utilities']
+    
+    def passes_screening(self, ticker_symbol):
+        """
+        Initial screening criteria
+        """
+        try:
+            ticker = yf.Ticker(ticker_symbol)
+            info = ticker.info
+            
+            # Market cap check
+            market_cap = info.get('marketCap')
+            if not market_cap or market_cap < self.min_market_cap:
+                return False
+            
+            # Sector check
+            sector = info.get('sector')
+            if sector in self.excluded_sectors:
+                return False
+            
+            # Must have positive EBIT
+            financials = ticker.financials
+            if 'EBIT' not in financials.index:
+                return False
+            
+            ebit = financials.loc['EBIT'].iloc[0]
+            if ebit <= 0:
+                return False
+            
+            # Must have positive enterprise value
+            ev = info.get('enterpriseValue')
+            if not ev or ev <= 0:
+                return False
+            
+            return True
+        
+        except Exception as e:
+            return False
+    
+    def calculate_metrics(self, ticker_symbol):
+        """
+        Calculate ROC and Earnings Yield
+        """
+        try:
+            ticker = yf.Ticker(ticker_symbol)
+            info = ticker.info
+            financials = ticker.financials
+            balance_sheet = ticker.balance_sheet
+            
+            # EBIT
+            ebit = financials.loc['EBIT'].iloc[0]
+            
+            # Calculate ROC
+            current_assets = balance_sheet.loc['Current Assets'].iloc[0]
+            current_liabilities = balance_sheet.loc['Current Liabilities'].iloc[0]
+            net_working_capital = current_assets - current_liabilities
+            
+            # Net Fixed Assets
+            try:
+                net_fixed_assets = balance_sheet.loc['Net PPE'].iloc[0]
+            except:
+                # Fallback
+                total_assets = balance_sheet.loc['Total Assets'].iloc[0]
+                net_fixed_assets = total_assets - current_assets
+            
+            # Handle negative working capital (cap at zero)
+            tangible_capital = max(net_working_capital, 0) + net_fixed_assets
+            
+            if tangible_capital <= 0:
+                return None
+            
+            roc = (ebit / tangible_capital) * 100
+            
+            # Calculate Earnings Yield
+            enterprise_value = info.get('enterpriseValue')
+            if not enterprise_value:
+                market_cap = info['marketCap']
+                total_debt = info.get('totalDebt', 0)
+                total_cash = info.get('totalCash', 0)
+                enterprise_value = market_cap + total_debt - total_cash
+            
+            if enterprise_value <= 0:
+                return None
+            
+            earnings_yield = (ebit / enterprise_value) * 100
+            
+            return {
+                'ticker': ticker_symbol,
+                'company_name': info.get('longName', ticker_symbol),
+                'sector': info.get('sector'),
+                'industry': info.get('industry'),
+                'market_cap': info.get('marketCap'),
+                'roc': roc,
+                'earnings_yield': earnings_yield,
+                'ebit': ebit,
+                'enterprise_value': enterprise_value,
+                'tangible_capital': tangible_capital,
+                # Additional metrics for analysis
+                'revenue': financials.loc['Total Revenue'].iloc[0] if 'Total Revenue' in financials.index else None,
+                'revenue_growth': info.get('revenueGrowth'),
+                'debt_to_equity': info.get('debtToEquity'),
+                'profit_margin': info.get('profitMargins')
+            }
+        
+        except Exception as e:
+            print(f"Error processing {ticker_symbol}: {e}")
+            return None
+    
+    def screen_universe(self, ticker_list):
+        """
+        Screen entire universe of stocks
+        """
+        results = []
+        
+        print(f"Screening {len(ticker_list)} stocks...")
+        
+        for i, ticker in enumerate(ticker_list):
+            if (i + 1) % 50 == 0:
+                print(f"Progress: {i+1}/{len(ticker_list)}")
+            
+            if self.passes_screening(ticker):
+                metrics = self.calculate_metrics(ticker)
+                if metrics:
+                    results.append(metrics)
+        
+        print(f"Found {len(results)} qualifying stocks")
+        return results
+    
+    def rank_stocks(self, results_list):
+        """
+        Apply Magic Formula ranking
+        """
+        if not results_list:
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(results_list)
+        
+        # Rank by ROC (higher is better)
+        df['roc_rank'] = df['roc'].rank(ascending=False)
+        
+        # Rank by Earnings Yield (higher is better)
+        df['ey_rank'] = df['earnings_yield'].rank(ascending=False)
+        
+        # Combined rank
+        df['combined_rank'] = df['roc_rank'] + df['ey_rank']
+        
+        # Sort by combined rank
+        df = df.sort_values('combined_rank').reset_index(drop=True)
+        
+        # Add rank number
+        df['magic_formula_rank'] = range(1, len(df) + 1)
+        
+        # Calculate percentiles
+        df['roc_percentile'] = df['roc'].rank(pct=True) * 100
+        df['ey_percentile'] = df['earnings_yield'].rank(pct=True) * 100
+        
+        return df
+    
+    def build_portfolio(self, ranked_df, num_positions=20, max_per_sector=None):
+        """
+        Build Magic Formula portfolio
+        """
+        if max_per_sector:
+            # Sector-diversified portfolio
+            portfolio = []
+            sector_counts = {}
+            
+            for idx, row in ranked_df.iterrows():
+                sector = row['sector']
+                
+                if sector_counts.get(sector, 0) >= max_per_sector:
+                    continue
+                
+                portfolio.append(row)
+                sector_counts[sector] = sector_counts.get(sector, 0) + 1
+                
+                if len(portfolio) >= num_positions:
+                    break
+            
+            portfolio_df = pd.DataFrame(portfolio)
+        else:
+            # Simple top N
+            portfolio_df = ranked_df.head(num_positions).copy()
+        
+        # Equal weight
+        portfolio_df['weight'] = 1.0 / len(portfolio_df)
+        
+        return portfolio_df
+    
+    def display_portfolio(self, portfolio_df):
+        """
+        Display portfolio with formatting
+        """
+        print(f"\n{'='*100}")
+        print(f"MAGIC FORMULA PORTFOLIO - {len(portfolio_df)} STOCKS")
+        print(f"{'='*100}")
+        print(f"{'Rank':<6} {'Ticker':<8} {'Company':<30} {'Sector':<20} {'ROC':<8} {'EY':<8} {'Weight':<8}")
+        print(f"{'-'*100}")
+        
+        for idx, row in portfolio_df.iterrows():
+            print(f"{row.get('magic_formula_rank', idx+1):<6} "
+                  f"{row['ticker']:<8} "
+                  f"{row['company_name'][:28]:<30} "
+                  f"{row['sector'][:18]:<20} "
+                  f"{row['roc']:>6.1f}% "
+                  f"{row['earnings_yield']:>6.2f}% "
+                  f"{row['weight']*100:>6.1f}%")
+        
+        print(f"\n{'PORTFOLIO STATISTICS'}")
+        print(f"{'-'*100}")
+        print(f"Average ROC:            {portfolio_df['roc'].mean():.1f}%")
+        print(f"Average Earnings Yield: {portfolio_df['earnings_yield'].mean():.2f}%")
+        print(f"Median ROC:            {portfolio_df['roc'].median():.1f}%")
+        print(f"Median Earnings Yield: {portfolio_df['earnings_yield'].median():.2f}%")
+        print(f"Total Market Cap:      ${portfolio_df['market_cap'].sum()/1e9:.1f}B")
+        print(f"Average Market Cap:    ${portfolio_df['market_cap'].mean()/1e9:.2f}B")
+        
+        # Sector breakdown
+        print(f"\n{'SECTOR ALLOCATION'}")
+        print(f"{'-'*100}")
+        sector_allocation = portfolio_df.groupby('sector')['weight'].sum().sort_values(ascending=False)
+        for sector, weight in sector_allocation.items():
+            print(f"{sector:<30} {weight*100:>6.1f}%")
+
+# Usage Example
+screener = MagicFormulaScreener(min_market_cap=100_000_000)
+
+# Example with small set (in practice, use full S&P 500 or Russell 3000)
+tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NVDA', 'TSLA', 
+           'V', 'JNJ', 'WMT', 'JPM', 'PG', 'MA', 'HD', 'DIS', 'NFLX',
+           'COST', 'PEP', 'KO', 'MCD', 'NKE', 'INTC', 'CSCO', 'ORCL']
+
+# Screen
+results = screener.screen_universe(tickers)
+
+# Rank
+ranked = screener.rank_stocks(results)
+
+# Build portfolio
+portfolio = screener.build_portfolio(ranked, num_positions=10, max_per_sector=3)
+
+# Display
+screener.display_portfolio(portfolio)
+
+# Save results
+ranked.to_csv(f'magic_formula_rankings_{datetime.now().strftime("%Y%m%d")}.csv', index=False)
+portfolio.to_csv(f'magic_formula_portfolio_{datetime.now().strftime("%Y%m%d")}.csv', index=False)
+```
+
+## Expected Performance
+
+### Historical Backtests
+Greenblatt's research (1988-2004):
+- **Magic Formula:** 30.8% annual return
+- **S&P 500:** 12.4% annual return
+- **Outperformance:** +18.4% per year
+
+### Important Caveats
+
+**1. Underperformance Periods**
+```
+The Magic Formula underperformed in 5 out of 17 years
+- 1998: Internet bubble (value underperformed growth)
+- 1999: Continued bubble (value crushed)
+- Some years in early 2000s
+
+But cumulative outperformance was massive
+```
+
+**2. Small Cap vs Large Cap**
+```
+Small caps ($50M - $200M market cap): 23.7% annual
+Large caps ($1B+): 17.9% annual
+Mega caps ($10B+): Similar to S&P 500
+
+Lesson: Works better in smaller stocks with less coverage
+```
+
+**3. Realistic Expectations (Post-2004)**
+```
+Formula still works but:
+- More people know about it = smaller edge
+- Expect 3-5% annual outperformance, not 18%
+- Still requires discipline during underperformance
+```
+
+## Psychology & Discipline (Greenblatt's Emphasis)
+
+### The Hardest Part: Sticking With It
+
+**Problem:** Magic Formula will underperform for extended periods
+
+**Example underperformance scenario:**
+```
+Year 1: S&P +10%, Magic Formula +5% (underperform by 5%)
+Year 2: S&P +15%, Magic Formula +8% (underperform by 7%)
+
+At this point, most investors quit.
+
+But then:
+Year 3: S&P +8%, Magic Formula +25% (outperform by 17%)
+Year 4: S&P +12%, Magic Formula +22% (outperform by 10%)
+
+Cumulative: Magic Formula wins significantly
+```
+
+**Greenblatt's advice:**
+```python
+def psychological_checkup():
+    """
+    Questions to ask yourself before quitting
+    """
+    questions = [
+        "Has the fundamental logic changed? (Quality + Value still work?)",
+        "Am I comparing to appropriate benchmark? (Not just S&P 500)",
+        "Have I given it enough time? (Minimum 3-5 years)",
+        "Am I following the system correctly? (Not modifying it)",
+        "Is my underperformance within historical ranges? (Check backtests)"
+    ]
+    
+    print("Before abandoning Magic Formula, ask yourself:")
+    for i, q in enumerate(questions, 1):
+        print(f"{i}. {q}")
+```
+
+### Common Mistakes
+
+**1. Not Truly Following the Formula**
+```python
+# WRONG: Cherry-picking
+"I'll take stocks ranked 1-20, but skip #7 because I don't like that company"
+
+# RIGHT: Systematic
+"I'll take stocks ranked 1-20, period. No overrides."
+```
+
+**2. Selling Too Early**
+```python
+# WRONG: Impatience
+"Stock hasn't moved in 6 months, I'm selling"
+
+# RIGHT: Hold for 1 year minimum
+"Stock might take 12-18 months to reach fair value"
+```
+
+**3. Not Rebalancing Properly**
+```python
+# WRONG: Buy and forget
+"I bought 20 stocks in January, I'm done"
+
+# RIGHT: Annual rebalance
+"I'll reassess entire portfolio each year, sell losers/winners, buy new top-20"
+```
+
+**4. Modifying the Formula**
+```python
+# WRONG: "Improvements"
+"I'll add a momentum screen to make it better"
+
+# RIGHT: Trust the backtest
+"The formula works as-is over long periods"
+```
+
+## Integration with Other Strategies
+
+### Magic Formula + Momentum (Hybrid Approach)
+```python
+def magic_formula_with_momentum(ranked_df, num_positions=20):
+    """
+    Add momentum screen to Magic Formula
+    """
+    results = []
+    
+    for idx, row in ranked_df.iterrows():
+        ticker = yf.Ticker(row['ticker'])
+        history = ticker.history(period="6mo")
+        
+        # Calculate 6-month return
+        if len(history) > 0:
+            six_month_return = (history['Close'].iloc[-1] / history['Close'].iloc[0] - 1)
+            
+            # Only include if positive momentum
+            if six_month_return > 0:
+                row['momentum'] = six_month_return
+                results.append(row)
+                
+                if len(results) >= num_positions:
+                    break
+    
+    return pd.DataFrame(results)
+```
+
+### Magic Formula + Quality Filters
+```python
+def magic_formula_with_quality(ranked_df, num_positions=20):
+    """
+    Add additional quality screens
+    """
+    results = []
+    
+    for idx, row in ranked_df.iterrows():
+        ticker = yf.Ticker(row['ticker'])
+        info = ticker.info
+        
+        # Additional quality checks
+        profit_margin = info.get('profitMargins', 0)
+        debt_to_equity = info.get('debtToEquity', float('inf'))
+        revenue_growth = info.get('revenueGrowth', 0)
+        
+        # Quality thresholds
+        if (profit_margin > 0.05 and          # 5%+ profit margin
+            debt_to_equity < 2.0 and          # Reasonable debt
+            revenue_growth > -0.10):          # Not shrinking rapidly
+            
+            results.append(row)
+            
+            if len(results) >= num_positions:
+                break
+    
+    return pd.DataFrame(results)
+```
+
+## Resources & Tools
+
+### Pre-Built Magic Formula Screeners
+- **MagicFormulaInvesting.com** - Greenblatt's official site
+- **Stock Rover** - Has Magic Formula screen
+- **Portfolio123** - Advanced screening with MF metrics
+
+### Building Your Own Universe
+```python
+# Get comprehensive ticker lists
+import pandas as pd
+
+# Option 1: S&P 500
+sp500_url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
+sp500_table = pd.read_html(sp500_url)
+sp500_tickers = sp500_table[0]['Symbol'].tolist()
+
+# Option 2: Russell 3000 (broader universe)
+# Would need a data provider for this
+
+# Option 3: All US stocks above market cap threshold
+# Would need a comprehensive stock screener API
+```
+
+## Key Takeaways
+
+### What Makes Magic Formula Special
+
+1. **Simplicity** - Only two metrics, easy to calculate
+2. **Systematic** - No discretion, removes emotion
+3. **Proven** - Backtested over decades with strong results
+4. **Logical** - Combines quality (ROC) with value (EY)
+5. **Accessible** - Any investor can implement it
+
+### When It Works Best
+
+- **Market environments:** Value cycles, post-crisis recoveries
+- **Stock universe:** Small to mid caps ($100M - $10B)
+- **Time horizon:** 3-5+ years minimum
+- **Investor type:** Disciplined, patient, systematic
+
+### When It Struggles
+
+- **Market environments:** Growth/momentum rallies, bubbles
+- **Stock universe:** Mega caps (too efficient)
+- **Time horizon:** < 2 years (not enough time)
+- **Investor type:** Impatient, discretionary, emotional
+
+## Final Implementation Checklist
+
+Before running your Magic Formula portfolio:
+
+```python
+def pre_launch_checklist():
+    """
+    Questions to answer before launching MF portfolio
+    """
+    checks = [
+        "✓ Do I understand both metrics (ROC and Earnings Yield)?",
+        "✓ Have I excluded financials and utilities?",
+        "✓ Am I using market cap > $100M minimum?",
+        "✓ Will I hold positions for at least 1 year?",
+        "✓ Will I rebalance systematically (not emotionally)?",
+        "✓ Can I handle 2-3 years of underperformance?",
+        "✓ Am I committed to 20-30 stock diversification?",
+        "✓ Have I automated the screening process?",
+        "✓ Do I have a tax-efficient rebalancing plan?",
+        "✓ Am I prepared to NOT modify the system?"
+    ]
+    
+    print("MAGIC FORMULA PRE-LAUNCH CHECKLIST:")
+    print("="*60)
+    for check in checks:
+        print(check)
+    print("\nIf you answered YES to all, you're ready to proceed!")
+
+pre_launch_checklist()
+```
+
+## Conclusion
+
+Joel Greenblatt's Magic Formula is the most **systematic, backtested, and accessible** value investing strategy available. It bridges the gap between Graham's statistical value approach and Buffett's quality focus, creating a mechanical system that any investor can follow.
+
+**The core genius:** Buy good businesses (high ROC) at cheap prices (high earnings yield), hold them, and let mean reversion work. No predictions, no market timing, no discretion - just discipline.
+
+**The key challenge:** Most investors can't stick with it during inevitable periods of underperformance. The formula works over 3-5+ year periods, but requires psychological fortitude when it lags for months or even years.
+
+**Best for investors who:** Value simplicity, can follow rules systematically, have 5+ year horizons, and can tolerate tracking error vs benchmarks.
+
+Would you like me to create guides for any of the other investors I mentioned (Minervini, O'Neil, Howard Marks, etc.)?

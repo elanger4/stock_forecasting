@@ -1,0 +1,888 @@
+# Warren Buffett Investment Strategy Guide
+
+## Overview
+Warren Buffett's investment philosophy, developed alongside Charlie Munger at Berkshire Hathaway, centers on buying wonderful businesses at fair prices rather than fair businesses at wonderful prices. His approach emphasizes long-term competitive advantages (economic moats), management quality, predictable earnings, and holding forever when possible. Buffett seeks businesses he can understand, with strong returns on capital, minimal debt, and the ability to compound value over decades.
+
+## Core Investment Philosophy
+
+**Quality + Moat + Management + Price = Compounding Machine**
+
+Buffett looks for situations where:
+1. The business has durable competitive advantages (economic moats)
+2. Management is rational, honest, and shareholder-oriented
+3. Returns on invested capital are high and sustainable
+4. The business is simple enough to understand
+5. Price provides a margin of safety (though less emphasis on "cheap" than early career)
+
+## Key Metrics & Screening Criteria
+
+### 1. Quality & Profitability Metrics (Primary Focus)
+
+#### Return on Equity (ROE)
+- **Target:** > 15% consistently over 10+ years
+- **Philosophy:** High ROE indicates competitive advantage and efficient capital deployment
+- **yfinance field:** `info['returnOnEquity']`
+- **Deep dive calculation:**
+  ```python
+  # Calculate historical ROE from financials
+  financials = ticker.financials
+  balance_sheet = ticker.balance_sheet
+  
+  net_income = financials.loc['Net Income']
+  shareholders_equity = balance_sheet.loc['Stockholders Equity']
+  
+  # ROE = Net Income / Shareholders' Equity
+  roe_series = net_income / shareholders_equity
+  avg_roe_10yr = roe_series.mean()
+  roe_consistency = roe_series.std()  # Lower is better
+  ```
+
+#### Return on Invested Capital (ROIC)
+- **Target:** > 12-15% sustained over time
+- **Philosophy:** Better than ROE for capital-intensive businesses; shows true economic returns
+- **yfinance calculation:**
+  ```python
+  # ROIC = NOPAT / Invested Capital
+  # NOPAT = Operating Income * (1 - Tax Rate)
+  financials = ticker.financials
+  balance_sheet = ticker.balance_sheet
+  
+  operating_income = financials.loc['Operating Income'].iloc[0]
+  tax_rate = info.get('effectiveInterestRate', 0.21)  # Use effective or estimate
+  nopat = operating_income * (1 - tax_rate)
+  
+  # Invested Capital = Total Assets - Current Liabilities
+  total_assets = balance_sheet.loc['Total Assets'].iloc[0]
+  current_liabilities = balance_sheet.loc['Current Liabilities'].iloc[0]
+  invested_capital = total_assets - current_liabilities
+  
+  roic = nopat / invested_capital
+  ```
+
+#### Profit Margins
+- **Target:** High and stable, ideally growing
+- **Philosophy:** Pricing power = moat strength
+- **yfinance fields:**
+  ```python
+  gross_margins = info['grossMargins']
+  operating_margins = info['operatingMargins']
+  profit_margins = info['profitMargins']
+  
+  # Track margin trends over time
+  financials = ticker.financials
+  gross_profit = financials.loc['Gross Profit']
+  revenue = financials.loc['Total Revenue']
+  gross_margin_history = (gross_profit / revenue)
+  ```
+
+#### Earnings Consistency
+- **Target:** Steady, predictable earnings growth
+- **Philosophy:** Buffett avoids businesses with volatile, unpredictable earnings
+- **yfinance calculation:**
+  ```python
+  financials = ticker.financials
+  net_income = financials.loc['Net Income']
+  
+  # Calculate earnings growth and consistency
+  earnings_growth = net_income.pct_change()
+  earnings_volatility = earnings_growth.std()
+  avg_earnings_growth = earnings_growth.mean()
+  
+  # Count negative earnings years
+  negative_years = (net_income < 0).sum()
+  ```
+
+### 2. Economic Moat Indicators
+
+#### Gross Margin Stability/Expansion
+- **Target:** Gross margins > 40% and stable or improving
+- **Philosophy:** High margins = pricing power = moat
+- **yfinance tracking:**
+  ```python
+  financials = ticker.financials
+  gross_profit = financials.loc['Gross Profit']
+  revenue = financials.loc['Total Revenue']
+  gross_margins_history = (gross_profit / revenue) * 100
+  
+  # Check if margins are stable/expanding
+  margin_trend = gross_margins_history.iloc[0] - gross_margins_history.iloc[-1]
+  ```
+
+#### Revenue Per Share Growth
+- **Target:** Consistent growth without excessive share dilution
+- **Philosophy:** Real per-share growth, not just top-line inflation
+- **yfinance calculation:**
+  ```python
+  financials = ticker.financials
+  revenue = financials.loc['Total Revenue']
+  shares_outstanding = info['sharesOutstanding']
+  
+  # Historical shares outstanding from balance sheet
+  balance_sheet = ticker.balance_sheet
+  # Revenue per share trend
+  ```
+
+#### Capital Intensity
+- **Target:** Low capex relative to earnings (asset-light businesses preferred)
+- **Philosophy:** Less capital required = more free cash for shareholders
+- **yfinance calculation:**
+  ```python
+  cashflow = ticker.cashflow
+  operating_cf = cashflow.loc['Operating Cash Flow'].iloc[0]
+  capex = abs(cashflow.loc['Capital Expenditure'].iloc[0])
+  
+  capex_ratio = capex / operating_cf
+  # Target < 0.25 for asset-light businesses
+  
+  fcf = operating_cf - capex
+  fcf_margin = fcf / financials.loc['Total Revenue'].iloc[0]
+  ```
+
+#### Brand/Network Effects
+- **Target:** Qualitative assessment - does the business have intangible assets?
+- **Philosophy:** Brands, networks, switching costs create pricing power
+- **yfinance proxies:**
+  ```python
+  # Intangible assets on balance sheet
+  balance_sheet = ticker.balance_sheet
+  intangible_assets = balance_sheet.loc['Intangible Assets'].iloc[0] if 'Intangible Assets' in balance_sheet.index else 0
+  goodwill = balance_sheet.loc['Goodwill'].iloc[0] if 'Goodwill' in balance_sheet.index else 0
+  
+  # High advertising spend can indicate brand building
+  financials = ticker.financials
+  sg_and_a = financials.loc['Selling General Administrative'].iloc[0] if 'Selling General Administrative' in financials.index else 0
+  ```
+
+### 3. Owner Earnings & Cash Flow
+
+#### Owner Earnings (Buffett's Preferred Metric)
+- **Formula:** Net Income + Depreciation/Amortization - Capex - Working Capital increases
+- **Philosophy:** The actual cash an owner could take out of the business
+- **yfinance calculation:**
+  ```python
+  financials = ticker.financials
+  cashflow = ticker.cashflow
+  balance_sheet = ticker.balance_sheet
+  
+  net_income = financials.loc['Net Income'].iloc[0]
+  depreciation = cashflow.loc['Depreciation'].iloc[0] if 'Depreciation' in cashflow.index else 0
+  capex = abs(cashflow.loc['Capital Expenditure'].iloc[0])
+  
+  # Working capital change
+  current_assets = balance_sheet.loc['Current Assets'].iloc[0]
+  current_liabilities = balance_sheet.loc['Current Liabilities'].iloc[0]
+  working_capital = current_assets - current_liabilities
+  
+  # Compare to previous year for change
+  if len(balance_sheet.columns) > 1:
+      prev_current_assets = balance_sheet.loc['Current Assets'].iloc[1]
+      prev_current_liabilities = balance_sheet.loc['Current Liabilities'].iloc[1]
+      prev_working_capital = prev_current_assets - prev_current_liabilities
+      wc_increase = working_capital - prev_working_capital
+  else:
+      wc_increase = 0
+  
+  owner_earnings = net_income + depreciation - capex - wc_increase
+  ```
+
+#### Free Cash Flow Growth
+- **Target:** Growing FCF that exceeds net income growth
+- **Philosophy:** Cash is king; accounting earnings can mislead
+- **yfinance:**
+  ```python
+  cashflow = ticker.cashflow
+  operating_cf = cashflow.loc['Operating Cash Flow']
+  capex = cashflow.loc['Capital Expenditure']
+  fcf = operating_cf + capex  # Capex is negative
+  
+  # Calculate FCF growth rate
+  fcf_growth = fcf.pct_change()
+  avg_fcf_growth = fcf_growth.mean()
+  ```
+
+#### Cash Conversion
+- **Target:** FCF / Net Income > 1.0 consistently
+- **Philosophy:** Earnings that convert to cash are real
+- **yfinance calculation:**
+  ```python
+  fcf = info.get('freeCashflow')
+  net_income = financials.loc['Net Income'].iloc[0]
+  cash_conversion = fcf / net_income if net_income > 0 else None
+  ```
+
+### 4. Balance Sheet Strength
+
+#### Debt Levels
+- **Target:** Minimal debt, especially for non-financial companies
+- **Philosophy:** Debt limits flexibility and increases risk
+- **yfinance fields:**
+  ```python
+  total_debt = info['totalDebt']
+  total_equity = balance_sheet.loc['Stockholders Equity'].iloc[0]
+  debt_to_equity = info['debtToEquity']
+  
+  # Debt to EBITDA
+  ebitda = info['ebitda']
+  debt_to_ebitda = total_debt / ebitda if ebitda else None
+  
+  # Target: D/E < 0.5, Debt/EBITDA < 3
+  ```
+
+#### Interest Coverage
+- **Target:** EBIT / Interest Expense > 10
+- **Philosophy:** Comfortable debt service = no distress risk
+- **yfinance calculation:**
+  ```python
+  financials = ticker.financials
+  ebit = financials.loc['EBIT'].iloc[0] if 'EBIT' in financials.index else None
+  interest_expense = financials.loc['Interest Expense'].iloc[0] if 'Interest Expense' in financials.index else None
+  
+  interest_coverage = ebit / abs(interest_expense) if interest_expense else float('inf')
+  ```
+
+#### Working Capital Management
+- **Target:** Efficient working capital, minimal inventory buildup
+- **Philosophy:** Good businesses don't tie up excessive capital
+- **yfinance calculation:**
+  ```python
+  balance_sheet = ticker.balance_sheet
+  current_assets = balance_sheet.loc['Current Assets'].iloc[0]
+  current_liabilities = balance_sheet.loc['Current Liabilities'].iloc[0]
+  inventory = balance_sheet.loc['Inventory'].iloc[0] if 'Inventory' in balance_sheet.index else 0
+  
+  working_capital = current_assets - current_liabilities
+  working_capital_ratio = working_capital / financials.loc['Total Revenue'].iloc[0]
+  
+  # Days inventory outstanding
+  cogs = financials.loc['Cost Of Revenue'].iloc[0]
+  days_inventory = (inventory / cogs) * 365 if cogs else None
+  ```
+
+### 5. Valuation Metrics (Secondary to Quality)
+
+#### Price-to-Earnings Ratio
+- **Target:** Reasonable P/E relative to growth and quality (PEG < 1.5)
+- **Philosophy:** Don't overpay, but quality deserves a premium
+- **yfinance fields:**
+  ```python
+  trailing_pe = info['trailingPE']
+  forward_pe = info['forwardPE']
+  peg_ratio = info['pegRatio']
+  
+  # Calculate normalized P/E using 10-year average earnings
+  financials = ticker.financials
+  avg_earnings = financials.loc['Net Income'].mean()
+  normalized_pe = info['marketCap'] / avg_earnings
+  ```
+
+#### Price-to-Book Value
+- **Target:** Less relevant for modern Buffett, but P/B < 3 for capital-intensive businesses
+- **Philosophy:** Early Buffett metric; less important for asset-light businesses
+- **yfinance field:** `info['priceToBook']`
+
+#### Dividend Discount Model / DCF
+- **Target:** Intrinsic value > current price with margin of safety
+- **Philosophy:** Business is worth the PV of all future cash flows
+- **yfinance calculation:**
+  ```python
+  # Simplified DCF
+  fcf = info['freeCashflow']
+  growth_rate = 0.05  # Conservative estimate
+  discount_rate = 0.10  # Buffett's historical requirement
+  terminal_growth = 0.03
+  
+  # 10-year projection
+  fcf_projections = [fcf * (1 + growth_rate) ** i for i in range(1, 11)]
+  terminal_value = fcf_projections[-1] * (1 + terminal_growth) / (discount_rate - terminal_growth)
+  
+  # Discount to present
+  pv_fcf = sum([cf / (1 + discount_rate) ** i for i, cf in enumerate(fcf_projections, 1)])
+  pv_terminal = terminal_value / (1 + discount_rate) ** 10
+  
+  intrinsic_value = pv_fcf + pv_terminal
+  margin_of_safety = (intrinsic_value - info['marketCap']) / intrinsic_value
+  ```
+
+#### Earnings Yield vs. Bond Yield
+- **Target:** E/P ratio > 10-year Treasury yield + risk premium
+- **Philosophy:** Stocks must offer better returns than bonds
+- **yfinance calculation:**
+  ```python
+  earnings_yield = 1 / info['trailingPE'] if info.get('trailingPE') else None
+  # Compare to current 10-year treasury (would need external source)
+  # Buffett wants earnings yield > treasury + 3-5%
+  ```
+
+### 6. Management Quality Indicators
+
+#### Share Buybacks
+- **Target:** Rational buybacks when price < intrinsic value
+- **Philosophy:** Best use of cash if shares are undervalued
+- **yfinance calculation:**
+  ```python
+  cashflow = ticker.cashflow
+  stock_buyback = cashflow.loc['Repurchase Of Stock'] if 'Repurchase Of Stock' in cashflow.index else None
+  
+  # Check if buybacks are consistent and value-creating
+  # Compare share count over time
+  shares_outstanding_history = balance_sheet.loc['Share Issued'] if 'Share Issued' in balance_sheet.index else None
+  ```
+
+#### Insider Ownership
+- **Target:** Meaningful insider ownership (skin in the game)
+- **Philosophy:** Alignment with shareholders
+- **yfinance field:**
+  ```python
+  insider_ownership = info['heldPercentInsiders']
+  insider_transactions = ticker.insider_transactions
+  
+  # Look for insider buying, especially by CEO
+  recent_buys = insider_transactions[insider_transactions['Transaction'] == 'Buy']
+  ```
+
+#### Capital Allocation Track Record
+- **Target:** History of smart acquisitions and organic growth
+- **Philosophy:** Management must deploy capital at high returns
+- **yfinance proxy:**
+  ```python
+  # Compare ROIC to cost of capital over time
+  # Track acquisition history (qualitative research needed)
+  # Check if ROE/ROIC has remained high despite growth
+  ```
+
+#### Shareholder-Friendly Policies
+- **Target:** Reasonable dividends, no excessive dilution, transparent communication
+- **yfinance fields:**
+  ```python
+  dividend_rate = info['dividendRate']
+  dividend_yield = info['dividendYield']
+  payout_ratio = info['payoutRatio']
+  
+  # Buffett prefers low payout ratios (reinvest for growth)
+  # But likes consistent, growing dividends
+  ```
+
+### 7. Business Understanding (Circle of Competence)
+
+#### Business Simplicity
+- **Target:** Can explain the business to a child
+- **Philosophy:** If you don't understand it, you can't value it
+- **Qualitative assessment** - yfinance provides:
+  ```python
+  business_summary = info['longBusinessSummary']
+  industry = info['industry']
+  sector = info['sector']
+  ```
+
+#### Predictability
+- **Target:** Business will likely be similar in 10-20 years
+- **Philosophy:** Avoid rapid technological change
+- **Qualitative assessment aided by:**
+  ```python
+  # Check revenue/earnings volatility
+  financials = ticker.financials
+  revenue_volatility = financials.loc['Total Revenue'].pct_change().std()
+  earnings_volatility = financials.loc['Net Income'].pct_change().std()
+  
+  # Lower volatility = more predictable
+  ```
+
+## Complete yfinance Data Dictionary (Buffett Focus)
+
+### Essential Info Fields
+```python
+ticker = yf.Ticker("SYMBOL")
+info = ticker.info
+
+# Profitability & Returns (MOST IMPORTANT)
+profitability_metrics = {
+    'returnOnEquity': info['returnOnEquity'],
+    'returnOnAssets': info['returnOnAssets'],
+    'profitMargins': info['profitMargins'],
+    'operatingMargins': info['operatingMargins'],
+    'grossMargins': info['grossMargins'],
+    'ebitdaMargins': info.get('ebitdaMargins')
+}
+
+# Earnings Quality
+earnings_metrics = {
+    'trailingEps': info['trailingEps'],
+    'forwardEps': info['forwardEps'],
+    'earningsGrowth': info.get('earningsGrowth'),
+    'earningsQuarterlyGrowth': info.get('earningsQuarterlyGrowth'),
+    'revenueGrowth': info.get('revenueGrowth')
+}
+
+# Cash Flow (CRITICAL)
+cashflow_metrics = {
+    'freeCashflow': info['freeCashflow'],
+    'operatingCashflow': info['operatingCashflow']
+}
+
+# Valuation
+valuation_metrics = {
+    'marketCap': info['marketCap'],
+    'enterpriseValue': info['enterpriseValue'],
+    'trailingPE': info['trailingPE'],
+    'forwardPE': info['forwardPE'],
+    'pegRatio': info['pegRatio'],
+    'priceToBook': info['priceToBook'],
+    'priceToSalesTrailing12Months': info['priceToSalesTrailing12Months'],
+    'enterpriseToRevenue': info['enterpriseToRevenue'],
+    'enterpriseToEbitda': info['enterpriseToEbitda']
+}
+
+# Balance Sheet Strength
+balance_sheet_metrics = {
+    'totalCash': info['totalCash'],
+    'totalDebt': info['totalDebt'],
+    'totalRevenue': info['totalRevenue'],
+    'debtToEquity': info['debtToEquity'],
+    'currentRatio': info['currentRatio'],
+    'quickRatio': info['quickRatio'],
+    'totalCashPerShare': info.get('totalCashPerShare')
+}
+
+# Management & Ownership
+ownership_metrics = {
+    'heldPercentInsiders': info['heldPercentInsiders'],
+    'heldPercentInstitutions': info['heldPercentInstitutions']
+}
+
+# Dividends (Less important but nice)
+dividend_metrics = {
+    'dividendRate': info.get('dividendRate'),
+    'dividendYield': info.get('dividendYield'),
+    'payoutRatio': info.get('payoutRatio'),
+    'fiveYearAvgDividendYield': info.get('fiveYearAvgDividendYield')
+}
+
+# Business Info
+business_info = {
+    'sector': info['sector'],
+    'industry': info['industry'],
+    'longBusinessSummary': info['longBusinessSummary'],
+    'fullTimeEmployees': info.get('fullTimeEmployees')
+}
+```
+
+### Historical Data Methods (ESSENTIAL for Buffett Analysis)
+```python
+# Financial statements - need multi-year history
+financials = ticker.financials  # Last 4 years
+quarterly_financials = ticker.quarterly_financials  # Last 4 quarters
+balance_sheet = ticker.balance_sheet  # Last 4 years
+quarterly_balance_sheet = ticker.quarterly_balance_sheet
+cashflow = ticker.cashflow  # Last 4 years
+quarterly_cashflow = ticker.quarterly_cashflow
+
+# Key calculations from statements
+def get_historical_roe(ticker):
+    financials = ticker.financials
+    balance_sheet = ticker.balance_sheet
+    net_income = financials.loc['Net Income']
+    equity = balance_sheet.loc['Stockholders Equity']
+    return (net_income / equity).dropna()
+
+def get_historical_roic(ticker):
+    # Complex calculation - see formula above
+    pass
+
+# Institutional holders
+institutional_holders = ticker.institutional_holders
+major_holders = ticker.major_holders
+
+# Insider transactions (management quality proxy)
+insider_transactions = ticker.insider_transactions
+
+# Historical prices for valuation context
+history = ticker.history(period="10y")  # Long-term price history
+```
+
+## Screening Algorithm (Buffett Style)
+
+### Step 1: Quality Screen (Non-Negotiable)
+```python
+# Must pass ALL of these
+- ROE > 15% consistently (check 10-year average)
+- Positive earnings every year for past 10 years
+- Profit margins > industry average
+- FCF positive and growing
+- Debt-to-equity < 0.5
+```
+
+### Step 2: Moat Assessment
+```python
+# Must have at least 2 of these
+- Gross margins > 40% and stable/expanding
+- Brand/intangible assets evident
+- Network effects or switching costs
+- Low capital intensity (Capex/OCF < 25%)
+- Pricing power (stable margins despite inflation)
+```
+
+### Step 3: Business Understanding
+```python
+# Qualitative filters
+- Simple business model (can explain in one sentence)
+- Predictable (not tech disruption risk)
+- In circle of competence
+- Will likely exist in 20 years
+```
+
+### Step 4: Management Quality
+```python
+# Look for evidence of:
+- Rational capital allocation
+- Insider ownership > 5% or consistent buying
+- Shareholder-friendly (buybacks at good prices, reasonable dividends)
+- Clear communication in annual reports
+```
+
+### Step 5: Valuation with Margin of Safety
+```python
+# Price must be reasonable
+- P/E < 25 (for quality businesses)
+- PEG < 1.5
+- DCF shows 25-30% margin of safety
+- Earnings yield > 10-year treasury + 3%
+```
+
+## Sample Implementation
+
+```python
+import yfinance as yf
+import pandas as pd
+import numpy as np
+
+def buffett_screener(ticker_symbol):
+    """
+    Evaluate a stock using Warren Buffett's methodology
+    Returns detailed scoring and analysis
+    """
+    ticker = yf.Ticker(ticker_symbol)
+    info = ticker.info
+    financials = ticker.financials
+    balance_sheet = ticker.balance_sheet
+    cashflow_stmt = ticker.cashflow
+    
+    metrics = {}
+    score = 0
+    max_score = 0
+    reasons = []
+    
+    # === QUALITY METRICS (40 points possible) ===
+    
+    # Return on Equity (10 points)
+    max_score += 10
+    roe = info.get('returnOnEquity')
+    if roe:
+        metrics['roe'] = roe * 100
+        if roe > 0.20:  # 20%+
+            score += 10
+            reasons.append(f"Excellent ROE: {roe*100:.1f}%")
+        elif roe > 0.15:  # 15-20%
+            score += 7
+            reasons.append(f"Strong ROE: {roe*100:.1f}%")
+        elif roe > 0.10:  # 10-15%
+            score += 4
+            reasons.append(f"Good ROE: {roe*100:.1f}%")
+    
+    # Profit Margins (10 points)
+    max_score += 10
+    profit_margin = info.get('profitMargins')
+    if profit_margin:
+        metrics['profit_margin'] = profit_margin * 100
+        if profit_margin > 0.20:  # 20%+
+            score += 10
+            reasons.append(f"Exceptional margins: {profit_margin*100:.1f}%")
+        elif profit_margin > 0.15:  # 15-20%
+            score += 7
+            reasons.append(f"Strong margins: {profit_margin*100:.1f}%")
+        elif profit_margin > 0.10:  # 10-15%
+            score += 4
+            reasons.append(f"Good margins: {profit_margin*100:.1f}%")
+    
+    # Free Cash Flow Quality (10 points)
+    max_score += 10
+    fcf = info.get('freeCashflow')
+    try:
+        net_income = financials.loc['Net Income'].iloc[0]
+        if fcf and net_income > 0:
+            metrics['fcf'] = fcf
+            metrics['net_income'] = net_income
+            cash_conversion = fcf / net_income
+            metrics['cash_conversion'] = cash_conversion
+            
+            if cash_conversion > 1.2:
+                score += 10
+                reasons.append(f"Excellent cash conversion: {cash_conversion:.2f}x")
+            elif cash_conversion > 1.0:
+                score += 7
+                reasons.append(f"Strong cash conversion: {cash_conversion:.2f}x")
+            elif cash_conversion > 0.8:
+                score += 4
+                reasons.append(f"Good cash conversion: {cash_conversion:.2f}x")
+    except:
+        pass
+    
+    # Earnings Consistency (10 points)
+    max_score += 10
+    try:
+        net_income_history = financials.loc['Net Income']
+        if len(net_income_history) >= 4:
+            negative_years = (net_income_history < 0).sum()
+            earnings_growth = net_income_history.pct_change().dropna()
+            earnings_volatility = earnings_growth.std()
+            
+            metrics['negative_earnings_years'] = negative_years
+            metrics['earnings_volatility'] = earnings_volatility
+            
+            if negative_years == 0 and earnings_volatility < 0.3:
+                score += 10
+                reasons.append("Consistent earnings with low volatility")
+            elif negative_years == 0:
+                score += 7
+                reasons.append("Positive earnings every year")
+            elif negative_years <= 1:
+                score += 3
+                reasons.append("Mostly consistent earnings")
+    except:
+        pass
+    
+    # === MOAT INDICATORS (30 points possible) ===
+    
+    # Gross Margin Strength (10 points)
+    max_score += 10
+    gross_margin = info.get('grossMargins')
+    if gross_margin:
+        metrics['gross_margin'] = gross_margin * 100
+        if gross_margin > 0.50:  # 50%+
+            score += 10
+            reasons.append(f"Exceptional gross margins: {gross_margin*100:.1f}% (strong pricing power)")
+        elif gross_margin > 0.40:  # 40-50%
+            score += 7
+            reasons.append(f"Strong gross margins: {gross_margin*100:.1f}%")
+        elif gross_margin > 0.30:  # 30-40%
+            score += 4
+            reasons.append(f"Good gross margins: {gross_margin*100:.1f}%")
+    
+    # Capital Efficiency (10 points)
+    max_score += 10
+    try:
+        operating_cf = cashflow_stmt.loc['Operating Cash Flow'].iloc[0]
+        capex = abs(cashflow_stmt.loc['Capital Expenditure'].iloc[0])
+        capex_ratio = capex / operating_cf
+        metrics['capex_ratio'] = capex_ratio
+        
+        if capex_ratio < 0.20:  # Asset-light
+            score += 10
+            reasons.append(f"Asset-light business: {capex_ratio*100:.0f}% capex/OCF")
+        elif capex_ratio < 0.35:
+            score += 6
+            reasons.append(f"Moderate capital needs: {capex_ratio*100:.0f}% capex/OCF")
+        elif capex_ratio < 0.50:
+            score += 3
+    except:
+        pass
+    
+    # Return on Invested Capital (10 points)
+    max_score += 10
+    try:
+        operating_income = financials.loc['Operating Income'].iloc[0]
+        total_assets = balance_sheet.loc['Total Assets'].iloc[0]
+        current_liabilities = balance_sheet.loc['Current Liabilities'].iloc[0]
+        invested_capital = total_assets - current_liabilities
+        
+        # Simplified ROIC (not accounting for taxes)
+        roic = operating_income / invested_capital
+        metrics['roic'] = roic * 100
+        
+        if roic > 0.20:
+            score += 10
+            reasons.append(f"Excellent ROIC: {roic*100:.1f}%")
+        elif roic > 0.15:
+            score += 7
+            reasons.append(f"Strong ROIC: {roic*100:.1f}%")
+        elif roic > 0.10:
+            score += 4
+            reasons.append(f"Good ROIC: {roic*100:.1f}%")
+    except:
+        pass
+    
+    # === BALANCE SHEET (15 points possible) ===
+    
+    # Debt Level (10 points)
+    max_score += 10
+    debt_to_equity = info.get('debtToEquity')
+    if debt_to_equity is not None:
+        metrics['debt_to_equity'] = debt_to_equity
+        if debt_to_equity < 0.3:
+            score += 10
+            reasons.append(f"Minimal debt: D/E = {debt_to_equity:.2f}")
+        elif debt_to_equity < 0.5:
+            score += 7
+            reasons.append(f"Low debt: D/E = {debt_to_equity:.2f}")
+        elif debt_to_equity < 1.0:
+            score += 4
+            reasons.append(f"Moderate debt: D/E = {debt_to_equity:.2f}")
+    
+    # Liquidity (5 points)
+    max_score += 5
+    current_ratio = info.get('currentRatio')
+    if current_ratio:
+        metrics['current_ratio'] = current_ratio
+        if current_ratio > 2.0:
+            score += 5
+            reasons.append(f"Strong liquidity: CR = {current_ratio:.2f}")
+        elif current_ratio > 1.5:
+            score += 3
+    
+    # === VALUATION (15 points possible) ===
+    
+    # P/E Ratio (10 points)
+    max_score += 10
+    trailing_pe = info.get('trailingPE')
+    if trailing_pe:
+        metrics['trailing_pe'] = trailing_pe
+        peg = info.get('pegRatio')
+        
+        if peg and peg < 1.0:
+            score += 10
+            reasons.append(f"Attractive valuation: P/E={trailing_pe:.1f}, PEG={peg:.2f}")
+        elif peg and peg < 1.5:
+            score += 7
+            reasons.append(f"Fair valuation: P/E={trailing_pe:.1f}, PEG={peg:.2f}")
+        elif trailing_pe < 20:
+            score += 5
+            reasons.append(f"Reasonable P/E: {trailing_pe:.1f}")
+        elif trailing_pe < 25:
+            score += 3
+    
+    # Price to Book (5 points)
+    max_score += 5
+    price_to_book = info.get('priceToBook')
+    if price_to_book:
+        metrics['price_to_book'] = price_to_book
+        if price_to_book < 3.0 and roe and roe > 0.15:  # Quality + reasonable price
+            score += 5
+            reasons.append(f"Good value: P/B={price_to_book:.2f} with high ROE")
+        elif price_to_book < 5.0 and roe and roe > 0.20:  # Premium justified
+            score += 3
+    
+    # Calculate final rating
+    percentage_score = (score / max_score * 100) if max_score > 0 else 0
+    
+    if percentage_score >= 80:
+        rating = "WONDERFUL BUSINESS - STRONG BUY"
+    elif percentage_score >= 65:
+        rating = "QUALITY BUSINESS - BUY"
+    elif percentage_score >= 50:
+        rating = "GOOD BUSINESS - WATCH FOR BETTER PRICE"
+    elif percentage_score >= 35:
+        rating = "AVERAGE BUSINESS - LIKELY PASS"
+    else:
+        rating = "WEAK BUSINESS - AVOID"
+    
+    return {
+        'ticker': ticker_symbol,
+        'score': score,
+        'max_score': max_score,
+        'percentage': percentage_score,
+        'rating': rating,
+        'metrics': metrics,
+        'reasons': reasons,
+        'company_name': info.get('longName', ticker_symbol)
+    }
+
+# Example usage
+def analyze_stock(symbol):
+    result = buffett_screener(symbol)
+    
+    print(f"\n{'='*70}")
+    print(f"BUFFETT ANALYSIS: {result['company_name']} ({result['ticker']})")
+    print(f"{'='*70}")
+    print(f"\nSCORE: {result['score']}/{result['max_score']} ({result['percentage']:.1f}%)")
+    print(f"RATING: {result['rating']}")
+    print(f"\nKEY STRENGTHS:")
+    for reason in result['reasons']:
+        print(f"  ✓ {reason}")
+    
+    print(f"\nKEY METRICS:")
+    for key, value in result['metrics'].items():
+        if isinstance(value, (int, float)):
+            print(f"  {key}: {value:.2f}")
+        else:
+            print(f"  {key}: {value}")
+    
+    return result
+
+# Run analysis
+analyze_stock('AAPL')
+```
+
+## Buffett's Evolution Over Time
+
+### Early Buffett (1950s-1970s) - "Cigar Butt" Approach
+- Emphasized **deep value**: P/B < 0.7, distressed situations
+- Willing to buy mediocre businesses at great prices
+- Higher turnover, more trading
+- **yfinance focus:** P/B, net current asset value, low P/E
+
+### Middle Buffett (1980s-1990s) - Quality Awakening
+- Shift to **"wonderful businesses at fair prices"**
+- Emphasis on moats, brands, consumer monopolies
+- Hold forever, let compounding work
+- **yfinance focus:** ROE, margins, brand strength, predictability
+
+### Modern Buffett (2000s-Present) - Size & Simplicity
+- Forced into mega-caps due to Berkshire's size
+- Focus on **capital-light, high-ROIC businesses**
+- Still values predictability and moats above all
+- More willing to pay up for quality
+- **yfinance focus:** ROIC, FCF, asset-light metrics, scale
+
+## Key Differences from Other Strategies
+
+| Aspect | Buffett | Graham (Deep Value) | Growth Investors | Roaring Kitty |
+|--------|---------|---------------------|------------------|---------------|
+| **Primary Focus** | Quality + Moat | Price < Liquidation Value | Revenue/Earnings Growth | Value + Short Squeeze |
+| **Time Horizon** | Forever | 2-3 years | 5-10 years | 1-3 years |
+| **Key Metric** | ROE, ROIC | P/B, Net Current Assets | Revenue Growth | Short Interest |
+| **Debt Tolerance** | Very Low | Low | Moderate | Low |
+| **Valuation** | Fair price for quality | Bargain price required | Will pay premium | Bargain price required |
+| **Catalyst Needed** | No (time is catalyst) | Yes (revaluation) | No (growth is catalyst) | Yes (squeeze or turnaround) |
+
+## Red Flags (Buffett Would Avoid)
+
+Even if metrics look good, avoid:
+- **Rapid technological change** - unpredictable futures (why Buffett historically avoided tech)
+- **Complex businesses** - if you can't understand it, you can't value it
+- **Heavy dilution** - management enriching themselves at shareholder expense
+- **Serial acquirers** - often destroy value through empire building
+- **Cyclical businesses** - unless buying at cycle bottom with huge margin of safety
+- **Capital-intensive + low returns** - capital deployment black hole
+- **Management red flags** - excessive compensation, lack of transparency, shareholder-unfriendly actions
+- **Accounting irregularities** - any hint of manipulation
+
+## The Buffett Checklist
+
+Before investing, can you answer YES to all of these?
+
+1. ✓ Do I understand this business completely?
+2. ✓ Will this business likely exist and be similar in 20 years?
+3. ✓ Does it have durable competitive advantages?
+4. ✓ Has it earned high returns on capital (ROE > 15%) consistently?
+5. ✓ Does it convert earnings to cash efficiently?
+6. ✓ Is debt minimal and manageable?
+7. ✓ Is management rational and shareholder-oriented?
+8. ✓ Am I buying at a reasonable price with margin of safety?
+9. ✓ Am I comfortable owning this if the market closed for 10 years?
+
+If ANY answer is no, move on.
+
+## Conclusion
+
+Warren Buffett's approach prioritizes **quality and predictability** over cheapness. He seeks businesses with sustainable competitive advantages (moats), high returns on invested capital, minimal debt, and excellent management. Unlike Roaring Kitty's catalyst-driven contrarian plays, Buffett's strategy relies on **time and compounding** as the catalyst. The goal is to find wonderful businesses you can hold forever, letting their economic moats and reinvested earnings do the work.
+
+The key insight: **It's far better to buy a wonderful company at a fair price than a fair company at a wonderful price.** Quality compounds; mediocrity doesn't.

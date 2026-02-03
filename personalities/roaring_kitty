@@ -1,0 +1,375 @@
+Roaring Kitty Investment Strategy Guide
+Overview
+Keith Gill (aka Roaring Kitty/DeepFuckingValue) employed a contrarian value investing approach that combined traditional fundamental analysis with technical setup recognition, particularly around short squeeze dynamics. His strategy focused on finding deeply undervalued companies with strong balance sheets, operational turnaround potential, and extreme bearish sentiment that created asymmetric risk/reward opportunities.
+Core Investment Philosophy
+Value + Catalyst + Controversy = Opportunity
+Roaring Kitty looked for situations where:
+
+Fundamental value was significantly higher than market price
+Clear catalysts existed for value realization
+Consensus was overwhelmingly negative (creating the mispricing)
+Technical setup (high short interest) provided additional upside potential
+
+Key Metrics & Screening Criteria
+1. Valuation Metrics (Primary Focus)
+Price-to-Book Ratio (P/B)
+
+Target: P/B < 1.0 (ideally well below)
+Philosophy: Company trading below liquidation value suggests extreme pessimism
+yfinance field: info['priceToBook']
+
+Market Cap vs. Net Cash
+
+Target: Market cap < (Cash - Total Debt)
+Philosophy: If you can buy the company for less than its net cash, everything else is "free"
+yfinance calculation:
+
+python  market_cap = info['marketCap']
+  total_cash = info['totalCash']
+  total_debt = info['totalDebt']
+  net_cash = total_cash - total_debt
+  trading_below_net_cash = market_cap < net_cash
+Free Cash Flow (FCF)
+
+Target: Positive and growing FCF, high FCF yield
+Philosophy: Cash generation is real value; accounting profits can be manipulated
+yfinance fields:
+
+python  fcf = info['freeCashflow']
+  operating_cashflow = info['operatingCashflow']
+  # FCF Yield
+  fcf_yield = fcf / info['marketCap'] if fcf and info.get('marketCap') else None
+Enterprise Value Ratios
+
+Target: EV/EBITDA < 5-8, EV/FCF < 10-15
+Philosophy: Looking for companies trading at distressed valuations
+yfinance fields:
+
+python  enterprise_value = info['enterpriseValue']
+  ebitda = info['ebitda']
+  ev_to_ebitda = info['enterpriseToEbitda']
+  ev_to_revenue = info['enterpriseToRevenue']
+2. Balance Sheet Strength
+Current Ratio
+
+Target: > 1.5 (preferably > 2.0)
+Philosophy: Company can weather short-term difficulties
+yfinance calculation:
+
+python  balance_sheet = ticker.balance_sheet
+  current_assets = balance_sheet.loc['Current Assets'].iloc[0]
+  current_liabilities = balance_sheet.loc['Current Liabilities'].iloc[0]
+  current_ratio = current_assets / current_liabilities
+Debt-to-Equity
+
+Target: < 0.5 (lower is better)
+Philosophy: Low debt = flexibility and survival capability
+yfinance field: info['debtToEquity']
+
+Cash Position
+
+Target: High cash relative to market cap
+yfinance fields:
+
+python  total_cash = info['totalCash']
+  cash_per_share = info['totalCash'] / info['sharesOutstanding']
+3. Short Interest Metrics (Critical for RK Strategy)
+Short Interest as % of Float
+
+Target: > 20% is high, > 40% is extreme, > 100% is unicorn territory
+Philosophy: High short interest = fuel for potential squeeze + validation of extreme pessimism
+yfinance fields:
+
+python  shares_short = info['sharesShort']
+  float_shares = info['floatShares']
+  short_percent_float = info['shortPercentOfFloat']  # Pre-calculated (decimal)
+  # Manual calculation
+  short_pct = (shares_short / float_shares) * 100 if float_shares else None
+Short Ratio (Days to Cover)
+
+Target: > 5 days suggests squeeze potential
+Philosophy: How many days of average volume needed to cover all shorts
+yfinance field: info['shortRatio']
+
+Short Interest Trend
+
+Target: Rising short interest while fundamentals improve
+Philosophy: Shorts getting more aggressive as they're proven wrong = powder keg
+yfinance: Track sharesShort over time using historical data or news
+
+4. Operational & Turnaround Indicators
+Revenue Trends
+
+Target: Stable or growing, not collapsing
+yfinance:
+
+python  financials = ticker.financials
+  revenue = financials.loc['Total Revenue']
+  # Compare YoY growth
+Insider Ownership
+
+Target: Meaningful insider buying, especially by activists
+yfinance field: info['heldPercentInsiders']
+
+Institutional Ownership
+
+Target: Monitor for activist investors or value-focused institutions
+yfinance:
+
+python  institutional_holders = ticker.institutional_holders
+  major_holders = ticker.major_holders
+5. Sentiment & Positioning
+Analyst Recommendations
+
+Target: Predominantly "sell" or "hold" ratings
+Philosophy: Maximum pessimism = maximum opportunity
+yfinance:
+
+python  recommendations = ticker.recommendations
+  # Count sell vs buy ratings
+52-Week Range
+
+Target: Trading near 52-week lows
+yfinance fields:
+
+python  current_price = info['currentPrice']
+  fifty_two_week_low = info['fiftyTwoWeekLow']
+  fifty_two_week_high = info['fiftyTwoWeekHigh']
+  pct_off_high = (fifty_two_week_high - current_price) / fifty_two_week_high
+Complete yfinance Data Dictionary
+Essential Info Fields
+pythonticker = yf.Ticker("SYMBOL")
+info = ticker.info
+
+# Valuation
+valuation_metrics = {
+    'marketCap': info['marketCap'],
+    'enterpriseValue': info['enterpriseValue'],
+    'priceToBook': info['priceToBook'],
+    'priceToSalesTrailing12Months': info['priceToSalesTrailing12Months'],
+    'enterpriseToRevenue': info['enterpriseToRevenue'],
+    'enterpriseToEbitda': info['enterpriseToEbitda'],
+    'trailingPE': info['trailingPE'],
+    'forwardPE': info['forwardPE']
+}
+
+# Balance Sheet
+balance_sheet_metrics = {
+    'totalCash': info['totalCash'],
+    'totalDebt': info['totalDebt'],
+    'debtToEquity': info['debtToEquity'],
+    'currentRatio': info['currentRatio'],
+    'quickRatio': info['quickRatio']
+}
+
+# Cash Flow
+cashflow_metrics = {
+    'freeCashflow': info['freeCashflow'],
+    'operatingCashflow': info['operatingCashflow']
+}
+
+# Short Interest
+short_metrics = {
+    'sharesShort': info['sharesShort'],
+    'shortRatio': info['shortRatio'],
+    'shortPercentOfFloat': info['shortPercentOfFloat'],
+    'floatShares': info['floatShares'],
+    'sharesOutstanding': info['sharesOutstanding']
+}
+
+# Ownership
+ownership_metrics = {
+    'heldPercentInsiders': info['heldPercentInsiders'],
+    'heldPercentInstitutions': info['heldPercentInstitutions']
+}
+
+# Price History
+price_metrics = {
+    'currentPrice': info['currentPrice'],
+    'fiftyTwoWeekLow': info['fiftyTwoWeekLow'],
+    'fiftyTwoWeekHigh': info['fiftyTwoWeekHigh'],
+    'fiftyDayAverage': info['fiftyDayAverage'],
+    'twoHundredDayAverage': info['twoHundredDayAverage']
+}
+
+# Profitability
+profitability_metrics = {
+    'returnOnEquity': info['returnOnEquity'],
+    'returnOnAssets': info['returnOnAssets'],
+    'profitMargins': info['profitMargins'],
+    'operatingMargins': info['operatingMargins']
+}
+Historical Data Methods
+python# Financial statements
+financials = ticker.financials  # Income statement
+balance_sheet = ticker.balance_sheet
+cashflow = ticker.cashflow
+
+# Holders
+institutional_holders = ticker.institutional_holders
+major_holders = ticker.major_holders
+insider_transactions = ticker.insider_transactions
+
+# Recommendations
+recommendations = ticker.recommendations
+recommendations_summary = ticker.recommendations_summary
+
+# Historical prices
+history = ticker.history(period="1y")  # or "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"
+Screening Algorithm
+Here's a suggested screening workflow:
+Step 1: Initial Filter (Cast Wide Net)
+python# Valuation screens
+- P/B < 1.5
+- Market cap < $5B (focus on overlooked companies)
+- Positive free cash flow
+- Current ratio > 1.5
+
+# Short interest screen
+- Short % of float > 15%
+Step 2: Deep Value Filter
+python# Look for extreme value
+- P/B < 1.0 OR Market cap < Net cash OR FCF yield > 15%
+- Debt-to-equity < 0.5
+- Not in bankruptcy or imminent distress
+Step 3: Short Squeeze Setup
+python# Identify technical potential
+- Short % of float > 30%
+- Short ratio > 5 days
+- Increasing short interest trend
+Step 4: Catalyst Identification
+python# Look for turnaround signals (manual research)
+- New management or activist investors
+- Asset sales or restructuring
+- New product cycles or strategic shifts
+- Industry tailwinds
+Step 5: Sentiment Confirmation
+python# Validate extreme pessimism
+- Stock near 52-week lows
+- Predominantly negative analyst ratings
+- Declining institutional ownership (selling has been exhausted)
+Risk Management (RK Style)
+Position Sizing
+
+Start small, add on confirmation
+Use options for leverage with defined risk
+Long-dated calls (6+ months) for asymmetric payoff
+
+Entry Strategy
+
+Build position over time as thesis develops
+Look for capitulation volume spikes (maximum fear)
+Average down if fundamentals improve but price falls
+
+Exit Strategy
+
+Set upside targets based on normalized valuation
+Trail stops once in profit
+Take partial profits on spikes, hold core for full revaluation
+
+Sample Implementation
+pythonimport yfinance as yf
+import pandas as pd
+
+def roaring_kitty_screener(ticker_symbol):
+    """
+    Evaluate a stock using Roaring Kitty's methodology
+    """
+    ticker = yf.Ticker(ticker_symbol)
+    info = ticker.info
+    
+    # Calculate key metrics
+    metrics = {}
+    
+    # Valuation
+    metrics['price_to_book'] = info.get('priceToBook')
+    metrics['market_cap'] = info.get('marketCap')
+    
+    # Balance sheet strength
+    total_cash = info.get('totalCash', 0)
+    total_debt = info.get('totalDebt', 0)
+    metrics['net_cash'] = total_cash - total_debt
+    metrics['trading_below_net_cash'] = metrics['market_cap'] < metrics['net_cash'] if metrics['market_cap'] else False
+    metrics['current_ratio'] = info.get('currentRatio')
+    metrics['debt_to_equity'] = info.get('debtToEquity')
+    
+    # Cash flow
+    metrics['free_cashflow'] = info.get('freeCashflow')
+    metrics['fcf_yield'] = (metrics['free_cashflow'] / metrics['market_cap'] * 100) if metrics['free_cashflow'] and metrics['market_cap'] else None
+    
+    # Short interest
+    float_shares = info.get('floatShares')
+    shares_short = info.get('sharesShort')
+    metrics['short_percent_float'] = (shares_short / float_shares * 100) if float_shares and shares_short else None
+    metrics['short_ratio'] = info.get('shortRatio')
+    
+    # Price positioning
+    current_price = info.get('currentPrice')
+    fifty_two_low = info.get('fiftyTwoWeekLow')
+    fifty_two_high = info.get('fiftyTwoWeekHigh')
+    metrics['pct_from_low'] = ((current_price - fifty_two_low) / fifty_two_low * 100) if current_price and fifty_two_low else None
+    metrics['pct_from_high'] = ((fifty_two_high - current_price) / fifty_two_high * 100) if current_price and fifty_two_high else None
+    
+    # Score the opportunity
+    score = 0
+    reasons = []
+    
+    if metrics['price_to_book'] and metrics['price_to_book'] < 1.0:
+        score += 2
+        reasons.append(f"Deep value: P/B = {metrics['price_to_book']:.2f}")
+    
+    if metrics['trading_below_net_cash']:
+        score += 3
+        reasons.append("Trading below net cash!")
+    
+    if metrics['fcf_yield'] and metrics['fcf_yield'] > 10:
+        score += 2
+        reasons.append(f"Strong FCF yield: {metrics['fcf_yield']:.1f}%")
+    
+    if metrics['short_percent_float'] and metrics['short_percent_float'] > 20:
+        score += 2
+        reasons.append(f"High short interest: {metrics['short_percent_float']:.1f}% of float")
+    
+    if metrics['short_percent_float'] and metrics['short_percent_float'] > 40:
+        score += 2
+        reasons.append("EXTREME short interest - squeeze potential!")
+    
+    if metrics['current_ratio'] and metrics['current_ratio'] > 2.0:
+        score += 1
+        reasons.append("Strong liquidity")
+    
+    if metrics['pct_from_high'] and metrics['pct_from_high'] > 50:
+        score += 1
+        reasons.append(f"Near 52-week low ({metrics['pct_from_high']:.0f}% off high)")
+    
+    return {
+        'ticker': ticker_symbol,
+        'score': score,
+        'metrics': metrics,
+        'reasons': reasons,
+        'rating': 'STRONG BUY' if score >= 8 else 'BUY' if score >= 5 else 'WATCH' if score >= 3 else 'PASS'
+    }
+
+# Example usage
+result = roaring_kitty_screener('GME')
+print(f"Score: {result['score']}/10 - {result['rating']}")
+print("Reasons:", result['reasons'])
+Key Differences from Traditional Value Investing
+
+Emphasis on short interest - Traditional value investors ignore this; RK saw it as both validation and catalyst
+Options for leverage - Used long-dated calls rather than just shares
+Comfort with controversy - Actively sought stocks that were hated and mocked
+Technical awareness - Combined fundamental value with understanding of forced buying dynamics
+Patience with volatility - Willing to hold through extreme swings if thesis intact
+
+Red Flags to Avoid
+Even with RK's approach, avoid:
+
+Terminal decline businesses - Value traps with no path forward (e.g., dying malls)
+Fraud or accounting issues - Balance sheet value doesn't matter if it's fake
+Imminent bankruptcy - Short sellers might be right about survival risk
+Dilution risk - Companies that constantly issue shares destroy value
+No catalyst visible - Value without a catalyst can stay cheap forever
+
+Conclusion
+Roaring Kitty's strategy was sophisticated contrarian value investing that recognized short squeezes as both a validation signal and a technical catalyst. The key is finding genuine value + extreme pessimism + technical setup, then having conviction to hold through volatility when others panic.

@@ -1,0 +1,994 @@
+# Stanley Druckenmiller Investment Strategy Guide
+
+## Overview
+Stanley Druckenmiller is one of the most successful macro investors of all time, with a 30-year track record at Duquesne Capital averaging ~30% annual returns with no down years. His approach combines top-down macro analysis with bottom-up stock picking, emphasizing asymmetric risk/reward, high conviction concentrated bets, and aggressive position sizing when conviction is highest. Unlike Buffett's "hold forever" philosophy, Druckenmiller is a dynamic trader who adapts quickly to changing conditions and isn't afraid to admit mistakes and reverse course.
+
+## Core Investment Philosophy
+
+**Macro Thesis + Concentration + Flexibility = Outsized Returns**
+
+Druckenmiller looks for situations where:
+1. Major macro trends are unfolding (technological shifts, policy changes, economic cycles)
+2. He can identify specific securities that benefit asymmetrically from these trends
+3. Risk/reward is heavily skewed in his favor (home runs, not singles)
+4. He can size positions aggressively when conviction is high
+5. He can exit or reverse quickly when proven wrong
+
+## Key Principles
+
+### 1. Top-Down Macro Framework (Primary)
+- **Philosophy:** "Earnings don't move the overall market; it's the Federal Reserve Board... focus on the central banks and focus on the movement of liquidity... most people in the market are looking for earnings and conventional measures. It's liquidity that moves markets."
+- **Focus Areas:**
+  - Federal Reserve policy and interest rate trajectory
+  - Liquidity conditions (money supply, credit growth)
+  - Currency movements and international capital flows
+  - Fiscal policy and government spending
+  - Economic cycle positioning (early/mid/late cycle)
+
+### 2. Bottom-Up Stock Selection (Secondary)
+- **Philosophy:** After identifying macro themes, find the best individual expressions
+- **Approach:** Look for companies with:
+  - Strong fundamental tailwinds from macro trends
+  - Improving earnings revisions and operating leverage
+  - Technical strength and momentum
+  - Management execution capability
+
+### 3. Asymmetric Risk/Reward
+- **Philosophy:** "I've learned many things from George Soros, but perhaps the most significant is that it's not whether you're right or wrong that's important, but how much money you make when you're right and how much you lose when you're wrong."
+- **Target:** Risk 1 to make 5+, not risk 1 to make 1.2
+- **Implementation:** Position size correlates with conviction AND risk/reward ratio
+
+### 4. Concentration Over Diversification
+- **Philosophy:** "Diversification is for people who don't know what they're doing"
+- **Approach:** 
+  - Top 5 positions often represent 50%+ of portfolio
+  - When high conviction, size up dramatically (sometimes 50-100%+ of capital in single idea)
+  - Cut losers quickly, let winners run and add to them
+
+### 5. Flexibility and Intellectual Humility
+- **Philosophy:** "The way to build long-term returns is through preservation of capital and home runs"
+- **Approach:**
+  - No ego attachment to positions
+  - Willing to completely reverse thesis within hours/days if data changes
+  - Cash is a valid position when opportunity set is poor
+  - Can go from 100% long to 100% short if conditions warrant
+
+## Key Metrics & Screening Criteria
+
+### 1. Macro Indicators (Most Important)
+
+#### Federal Reserve Policy & Interest Rates
+- **Focus:** Direction and pace of rate changes
+- **Philosophy:** Interest rates are the price of money; when price changes, all asset values adjust
+- **Data Sources:**
+  ```python
+  # External APIs needed for real-time macro data
+  # Fed Funds Rate, 10-year Treasury yield
+  # Yield curve shape (2s10s spread)
+  # Fed balance sheet size
+  # FOMC meeting minutes and dot plot
+  
+  # Proxy from yfinance - can track TLT (bond ETF) as rate proxy
+  tlt = yf.Ticker("TLT")
+  tlt_price = tlt.history(period="1y")
+  # Rising TLT = falling rates = positive for growth stocks
+  # Falling TLT = rising rates = negative for growth, positive for value/financials
+  ```
+
+#### Liquidity Conditions
+- **Focus:** M2 money supply growth, credit spreads, financial conditions
+- **Philosophy:** Liquidity drives valuations; abundant liquidity = higher multiples
+- **Proxies:**
+  ```python
+  # Credit spreads - corporate bonds vs treasuries
+  # Can track HYG (high yield) vs TLT (treasuries)
+  hyg = yf.Ticker("HYG")
+  tlt = yf.Ticker("TLT")
+  
+  # Narrowing spreads = improving liquidity
+  # Widening spreads = tightening liquidity
+  
+  # VIX as fear/liquidity gauge
+  vix = yf.Ticker("^VIX")
+  vix_level = vix.history(period="1mo")['Close'].iloc[-1]
+  # Low VIX = complacency, high liquidity
+  # High VIX = fear, tight liquidity
+  ```
+
+#### Currency Trends
+- **Focus:** Dollar strength/weakness and implications
+- **Philosophy:** Dollar moves affect global liquidity, commodity prices, corporate earnings
+- **Tracking:**
+  ```python
+  # DXY - US Dollar Index
+  dxy = yf.Ticker("DX-Y.NYB")
+  dollar_trend = dxy.history(period="6mo")
+  
+  # Strong dollar = negative for commodities, EM, US multinationals
+  # Weak dollar = positive for commodities, EM, US exporters
+  ```
+
+#### Economic Cycle Position
+- **Focus:** Leading indicators, employment, manufacturing data
+- **Philosophy:** Different assets outperform in different cycle phases
+- **Indicators:**
+  ```python
+  # ISM Manufacturing Index (need external source)
+  # Unemployment rate trend
+  # Leading Economic Indicators (LEI)
+  
+  # Sector rotation as proxy:
+  # Early cycle: Financials, Industrials
+  # Mid cycle: Technology, Consumer Discretionary  
+  # Late cycle: Energy, Materials
+  # Recession: Utilities, Consumer Staples, Healthcare
+  ```
+
+### 2. Individual Stock Metrics (Druckenmiller Focus)
+
+#### Earnings Momentum & Revisions
+- **Target:** Rising earnings estimates, positive surprises
+- **Philosophy:** Stock prices follow earnings revisions, not absolute valuation
+- **yfinance tracking:**
+  ```python
+  ticker = yf.Ticker("SYMBOL")
+  info = ticker.info
+  
+  # Earnings growth metrics
+  earnings_growth = info.get('earningsQuarterlyGrowth')
+  earnings_growth_yoy = info.get('earningsGrowth')
+  revenue_growth = info.get('revenueGrowth')
+  
+  # Analyst estimates
+  forward_eps = info.get('forwardEps')
+  trailing_eps = info.get('trailingEps')
+  
+  # Check if forward > trailing (expectations improving)
+  eps_momentum = (forward_eps / trailing_eps - 1) if forward_eps and trailing_eps else None
+  
+  # Number of analysts
+  analyst_count = info.get('numberOfAnalystOpinions')
+  
+  # Target price vs current price
+  target_mean = info.get('targetMeanPrice')
+  current_price = info.get('currentPrice')
+  upside = (target_mean / current_price - 1) if target_mean and current_price else None
+  ```
+
+#### Operating Leverage
+- **Target:** Companies where small revenue increases drive large profit increases
+- **Philosophy:** Maximum bang for buck from macro tailwinds
+- **yfinance calculation:**
+  ```python
+  financials = ticker.financials
+  
+  # Calculate operating leverage over time
+  revenue = financials.loc['Total Revenue']
+  operating_income = financials.loc['Operating Income']
+  
+  # Operating margin trend
+  operating_margin = (operating_income / revenue) * 100
+  margin_expansion = operating_margin.iloc[0] - operating_margin.iloc[-1]
+  
+  # Revenue growth vs earnings growth (leverage indicator)
+  revenue_growth = revenue.pct_change()
+  earnings_growth = operating_income.pct_change()
+  
+  # If earnings growing faster than revenue = positive operating leverage
+  ```
+
+#### Technical Momentum
+- **Target:** Stocks in strong uptrends, breaking out of bases
+- **Philosophy:** "Go with the flow" - don't fight momentum
+- **yfinance tracking:**
+  ```python
+  # Price relative to moving averages
+  history = ticker.history(period="1y")
+  
+  current_price = history['Close'].iloc[-1]
+  sma_50 = history['Close'].rolling(50).mean().iloc[-1]
+  sma_200 = history['Close'].rolling(200).mean().iloc[-1]
+  
+  # Golden cross = bullish (50 > 200)
+  golden_cross = sma_50 > sma_200
+  
+  # Price above both MAs = strong trend
+  above_50 = current_price > sma_50
+  above_200 = current_price > sma_200
+  
+  # Relative strength vs market
+  spy = yf.Ticker("SPY")
+  spy_history = spy.history(period="1y")
+  
+  stock_return = (history['Close'].iloc[-1] / history['Close'].iloc[0] - 1)
+  market_return = (spy_history['Close'].iloc[-1] / spy_history['Close'].iloc[0] - 1)
+  relative_strength = stock_return - market_return
+  
+  # Positive relative strength = outperforming market
+  ```
+
+#### Valuation (Less Important, But Not Ignored)
+- **Target:** Reasonable valuation relative to growth, but willing to pay up
+- **Philosophy:** "I think it's important that when something major is going on, I should be involved"
+- **yfinance metrics:**
+  ```python
+  # PEG ratio - Druckenmiller likes growth at reasonable price
+  peg_ratio = info.get('pegRatio')
+  
+  # Forward P/E relative to growth
+  forward_pe = info.get('forwardPE')
+  earnings_growth = info.get('earningsGrowth', 0) * 100  # Convert to percentage
+  
+  # Simple PEG calculation
+  peg_calc = forward_pe / earnings_growth if earnings_growth > 0 else None
+  
+  # Price to Sales for growth companies
+  price_to_sales = info.get('priceToSalesTrailing12Months')
+  
+  # EV/EBITDA
+  ev_to_ebitda = info.get('enterpriseToEbitda')
+  ```
+
+#### Market Leadership & Positioning
+- **Target:** Market leaders with dominant positions
+- **Philosophy:** In major trends, leaders outperform dramatically
+- **yfinance proxies:**
+  ```python
+  # Market cap and market share
+  market_cap = info.get('marketCap')
+  
+  # Revenue and market position
+  total_revenue = info.get('totalRevenue')
+  
+  # Check if #1 or #2 in industry (qualitative)
+  industry = info.get('industry')
+  
+  # Institutional ownership
+  institutional_ownership = info.get('heldPercentInstitutions')
+  # High institutional ownership = professional validation
+  
+  # Insider buying
+  insider_ownership = info.get('heldPercentInsiders')
+  insider_transactions = ticker.insider_transactions
+  ```
+
+### 3. Thematic/Secular Trend Identification
+
+#### Technology Adoption Curves
+- **Focus:** Companies riding major technological shifts
+- **Examples:** Internet (1990s), Mobile (2010s), Cloud (2010s-2020s), AI (2020s)
+- **Screening approach:**
+  ```python
+  # Look for explosive revenue growth in emerging categories
+  revenue_growth = info.get('revenueGrowth')
+  
+  # Target: 30%+ YoY revenue growth sustained
+  if revenue_growth and revenue_growth > 0.30:
+      # Potential thematic play
+      pass
+  
+  # Look at forward revenue estimates
+  financials = ticker.financials
+  recent_revenue = financials.loc['Total Revenue'].iloc[0]
+  
+  # Compare to analyst expectations (need earnings calendar)
+  ```
+
+#### Demographic Shifts
+- **Focus:** Aging populations, urbanization, middle class growth
+- **Examples:** Healthcare innovation, emerging market consumers
+- **Metrics:** Track population-serving metrics, geographic revenue exposure
+
+#### Policy/Regulatory Changes
+- **Focus:** Government policy creating winners and losers
+- **Examples:** Green energy subsidies, defense spending, infrastructure bills
+- **Approach:** Qualitative analysis + revenue exposure to policy areas
+
+### 4. Risk Management Metrics
+
+#### Position Sizing Formula
+- **Druckenmiller approach:** Size correlates with conviction × risk/reward
+- **Framework:**
+  ```python
+  def calculate_position_size(conviction, risk_reward_ratio, max_position_size=0.20):
+      """
+      Conviction: 0-100 scale
+      Risk/reward: Expected gain / expected loss (e.g., 5.0 means risk $1 to make $5)
+      Max position: 20% for most investors (Druckenmiller often went higher)
+      """
+      # Base size on conviction
+      base_size = conviction / 100 * max_position_size
+      
+      # Adjust for risk/reward
+      if risk_reward_ratio < 2.0:
+          # Poor risk/reward, reduce size
+          adjusted_size = base_size * 0.5
+      elif risk_reward_ratio < 3.0:
+          adjusted_size = base_size * 0.75
+      elif risk_reward_ratio >= 5.0:
+          # Excellent risk/reward, can size up
+          adjusted_size = min(base_size * 1.5, max_position_size)
+      else:
+          adjusted_size = base_size
+      
+      return adjusted_size
+  
+  # Example: 80% conviction, 6:1 risk/reward
+  position_size = calculate_position_size(80, 6.0)
+  # Would suggest ~24% position (if you cap at 30%)
+  ```
+
+#### Stop Loss Discipline
+- **Philosophy:** "It's not whether you're right or wrong, but how much you make when right and lose when wrong"
+- **Approach:**
+  ```python
+  # Define stop based on technical levels or % from entry
+  entry_price = 100
+  stop_loss = 95  # 5% risk
+  target = 125   # 25% reward
+  
+  risk_reward = (target - entry_price) / (entry_price - stop_loss)
+  # = 25 / 5 = 5:1 risk/reward
+  
+  # If stock hits stop, cut entire position immediately
+  # If stock moves in your favor, trail stop upward
+  ```
+
+#### Portfolio Heat
+- **Concept:** Total portfolio risk at any given time
+- **Calculation:**
+  ```python
+  # Sum of (position_size × distance_to_stop) across all positions
+  positions = [
+      {'size': 0.20, 'current': 100, 'stop': 95},  # 20% position, 5% from stop
+      {'size': 0.15, 'current': 50, 'stop': 47},   # 15% position, 6% from stop
+      {'size': 0.10, 'current': 200, 'stop': 190}  # 10% position, 5% from stop
+  ]
+  
+  total_heat = sum([
+      p['size'] * (p['current'] - p['stop']) / p['current']
+      for p in positions
+  ])
+  
+  # Total heat = 0.20*0.05 + 0.15*0.06 + 0.10*0.05 = 0.024 = 2.4% portfolio risk
+  # Druckenmiller might tolerate 5-10% total heat in high conviction environments
+  ```
+
+## Complete yfinance Data Dictionary (Druckenmiller Focus)
+
+### Essential Info Fields
+```python
+ticker = yf.Ticker("SYMBOL")
+info = ticker.info
+
+# Growth & Momentum (MOST IMPORTANT)
+growth_metrics = {
+    'revenueGrowth': info.get('revenueGrowth'),
+    'earningsGrowth': info.get('earningsGrowth'),
+    'earningsQuarterlyGrowth': info.get('earningsQuarterlyGrowth'),
+    'revenueQuarterlyGrowth': info.get('revenueQuarterlyGrowth', None)  # Not always available
+}
+
+# Analyst Expectations (Critical for momentum)
+analyst_metrics = {
+    'targetMeanPrice': info.get('targetMeanPrice'),
+    'targetHighPrice': info.get('targetHighPrice'),
+    'targetLowPrice': info.get('targetLowPrice'),
+    'recommendationMean': info.get('recommendationMean'),  # 1=Strong Buy, 5=Sell
+    'numberOfAnalystOpinions': info.get('numberOfAnalystOpinions'),
+    'forwardEps': info.get('forwardEps'),
+    'trailingEps': info.get('trailingEps')
+}
+
+# Valuation (Secondary)
+valuation_metrics = {
+    'forwardPE': info.get('forwardPE'),
+    'trailingPE': info.get('trailingPE'),
+    'pegRatio': info.get('pegRatio'),
+    'priceToSalesTrailing12Months': info.get('priceToSalesTrailing12Months'),
+    'enterpriseToEbitda': info.get('enterpriseToEbitda'),
+    'marketCap': info.get('marketCap')
+}
+
+# Profitability & Operating Metrics
+profitability_metrics = {
+    'profitMargins': info.get('profitMargins'),
+    'operatingMargins': info.get('operatingMargins'),
+    'ebitdaMargins': info.get('ebitdaMargins'),
+    'returnOnEquity': info.get('returnOnEquity'),
+    'returnOnAssets': info.get('returnOnAssets')
+}
+
+# Ownership & Positioning
+ownership_metrics = {
+    'heldPercentInstitutions': info.get('heldPercentInstitutions'),
+    'heldPercentInsiders': info.get('heldPercentInsiders'),
+    'shortPercentOfFloat': info.get('shortPercentOfFloat'),
+    'shortRatio': info.get('shortRatio')
+}
+
+# Technical Indicators
+price_metrics = {
+    'currentPrice': info.get('currentPrice'),
+    'fiftyDayAverage': info.get('fiftyDayAverage'),
+    'twoHundredDayAverage': info.get('twoHundredDayAverage'),
+    'fiftyTwoWeekHigh': info.get('fiftyTwoWeekHigh'),
+    'fiftyTwoWeekLow': info.get('fiftyTwoWeekLow')
+}
+```
+
+### Historical Data & Momentum Calculations
+```python
+# Price history for technical analysis
+history = ticker.history(period="1y")
+
+# Moving averages
+history['SMA_50'] = history['Close'].rolling(50).mean()
+history['SMA_200'] = history['Close'].rolling(200).mean()
+
+# Relative strength vs market
+spy = yf.Ticker("SPY")
+spy_history = spy.history(period="1y")
+
+# Normalize both to starting point
+stock_normalized = history['Close'] / history['Close'].iloc[0]
+market_normalized = spy_history['Close'] / spy_history['Close'].iloc[0]
+
+# Relative strength line
+relative_strength = stock_normalized / market_normalized
+
+# Volatility (for risk assessment)
+returns = history['Close'].pct_change()
+volatility = returns.std() * (252 ** 0.5)  # Annualized
+
+# Financial statements for operating leverage
+financials = ticker.financials
+revenue = financials.loc['Total Revenue']
+operating_income = financials.loc['Operating Income']
+
+# Quarterly data for recent trends
+quarterly_financials = ticker.quarterly_financials
+quarterly_revenue = quarterly_financials.loc['Total Revenue']
+quarterly_earnings = quarterly_financials.loc['Net Income']
+
+# Earnings calendar
+earnings_dates = ticker.earnings_dates
+next_earnings = earnings_dates.index[0] if len(earnings_dates) > 0 else None
+```
+
+### Macro Context Tools
+```python
+# Interest rate proxies
+tlt = yf.Ticker("TLT")  # 20+ year Treasury ETF
+tlt_price = tlt.history(period="6mo")
+
+# Credit conditions
+hyg = yf.Ticker("HYG")  # High yield corporate bonds
+hyg_price = hyg.history(period="6mo")
+
+# Volatility
+vix = yf.Ticker("^VIX")
+vix_level = vix.history(period="3mo")['Close'].iloc[-1]
+
+# Dollar strength
+dxy = yf.Ticker("DX-Y.NYB")
+dollar_trend = dxy.history(period="1y")
+
+# Market breadth
+spy = yf.Ticker("SPY")
+qqq = yf.Ticker("QQQ")  # Tech-heavy
+iwm = yf.Ticker("IWM")  # Small caps
+
+# If small caps outperforming = risk-on
+# If large caps outperforming = risk-off/quality focus
+```
+
+## Screening Algorithm (Druckenmiller Style)
+
+### Step 1: Macro Regime Identification
+```python
+# Determine current macro environment
+# Is Fed easing or tightening?
+# Is liquidity expanding or contracting?
+# Is dollar strengthening or weakening?
+# What part of economic cycle are we in?
+
+# This determines what type of stocks to focus on:
+# - Easing + early cycle = Growth, Tech, Cyclicals
+# - Tightening + late cycle = Value, Quality, Defensives
+# - Crisis/recession = Short everything or defensive plays
+```
+
+### Step 2: Thematic Filter
+```python
+# What are the major secular trends?
+# Examples: AI revolution, energy transition, deglobalization, etc.
+
+# Screen for companies with exposure:
+# - Revenue growth > 25%
+# - In relevant sectors/industries
+# - Market cap suggests room to grow (not too small, not too large)
+```
+
+### Step 3: Momentum Screen
+```python
+# Technical strength
+- Price > 50 DMA and 200 DMA
+- 50 DMA > 200 DMA (golden cross)
+- Relative strength vs SPY > 0 (outperforming)
+- Price within 20% of 52-week high
+
+# Fundamental momentum
+- Forward EPS > Trailing EPS (estimates rising)
+- Positive earnings surprises last 2 quarters
+- Revenue growth accelerating (QoQ comparison)
+- Analyst upgrades > downgrades recently
+```
+
+### Step 4: Risk/Reward Assessment
+```python
+# For each candidate, calculate:
+upside = (analyst_target_high - current_price) / current_price
+downside = (current_price - technical_support) / current_price
+risk_reward = upside / downside
+
+# Filter for:
+- Risk/reward > 3:1 minimum
+- Preferably > 5:1 for large positions
+
+# Technical support might be:
+# - Recent consolidation low
+# - 200 DMA
+# - Previous breakout level
+```
+
+### Step 5: Fundamental Quality Check
+```python
+# Ensure company is fundamentally sound:
+- Positive earnings and FCF
+- Operating margins stable or expanding
+- Balance sheet not distressed (D/E < 2.0)
+- Not a fraud (basic accounting checks)
+
+# Note: Druckenmiller cares less about this than Buffett
+# He's willing to trade momentum even if fundamentals aren't perfect
+```
+
+### Step 6: Position Sizing
+```python
+# Conviction-weighted allocation
+# High conviction (8-10/10) + great risk/reward (>5:1) = 15-30% position
+# Medium conviction (5-7/10) + good risk/reward (3-5:1) = 5-15% position
+# Low conviction (<5/10) or poor risk/reward (<3:1) = pass or 1-5% position
+```
+
+## Sample Implementation
+
+```python
+import yfinance as yf
+import pandas as pd
+import numpy as np
+
+def druckenmiller_screener(ticker_symbol):
+    """
+    Evaluate a stock using Druckenmiller's methodology
+    Focuses on momentum, growth, and risk/reward
+    """
+    ticker = yf.Ticker(ticker_symbol)
+    info = ticker.info
+    history = ticker.history(period="1y")
+    
+    metrics = {}
+    score = 0
+    max_score = 0
+    reasons = []
+    
+    # === TECHNICAL MOMENTUM (30 points) ===
+    
+    # Price vs Moving Averages (10 points)
+    max_score += 10
+    current_price = info.get('currentPrice', history['Close'].iloc[-1])
+    sma_50 = info.get('fiftyDayAverage')
+    sma_200 = info.get('twoHundredDayAverage')
+    
+    if sma_50 and sma_200 and current_price:
+        metrics['price'] = current_price
+        metrics['sma_50'] = sma_50
+        metrics['sma_200'] = sma_200
+        
+        above_50 = current_price > sma_50
+        above_200 = current_price > sma_200
+        golden_cross = sma_50 > sma_200
+        
+        if above_50 and above_200 and golden_cross:
+            score += 10
+            reasons.append(f"Strong uptrend: Price above both 50 & 200 DMA with golden cross")
+        elif above_50 and above_200:
+            score += 7
+            reasons.append("Uptrend: Price above key moving averages")
+        elif above_50:
+            score += 4
+            reasons.append("Neutral: Price above 50 DMA")
+    
+    # Relative Strength (10 points)
+    max_score += 10
+    try:
+        spy = yf.Ticker("SPY")
+        spy_history = spy.history(period="1y")
+        
+        stock_return = (history['Close'].iloc[-1] / history['Close'].iloc[0] - 1)
+        market_return = (spy_history['Close'].iloc[-1] / spy_history['Close'].iloc[0] - 1)
+        relative_strength = stock_return - market_return
+        
+        metrics['stock_return_1y'] = stock_return * 100
+        metrics['market_return_1y'] = market_return * 100
+        metrics['relative_strength'] = relative_strength * 100
+        
+        if relative_strength > 0.20:  # Outperforming by 20%+
+            score += 10
+            reasons.append(f"Massive outperformance: +{relative_strength*100:.1f}% vs market")
+        elif relative_strength > 0.10:  # Outperforming by 10%+
+            score += 7
+            reasons.append(f"Strong outperformance: +{relative_strength*100:.1f}% vs market")
+        elif relative_strength > 0:
+            score += 4
+            reasons.append(f"Outperforming market: +{relative_strength*100:.1f}%")
+    except:
+        pass
+    
+    # 52-Week High Proximity (10 points)
+    max_score += 10
+    fifty_two_high = info.get('fiftyTwoWeekHigh')
+    if fifty_two_high and current_price:
+        pct_from_high = (current_price / fifty_two_high)
+        metrics['pct_from_52w_high'] = pct_from_high * 100
+        
+        if pct_from_high > 0.95:  # Within 5% of high
+            score += 10
+            reasons.append("Near all-time high: Strong momentum")
+        elif pct_from_high > 0.85:  # Within 15%
+            score += 6
+            reasons.append("Near recent highs")
+        elif pct_from_high > 0.70:  # Within 30%
+            score += 3
+    
+    # === GROWTH & EARNINGS MOMENTUM (30 points) ===
+    
+    # Revenue Growth (10 points)
+    max_score += 10
+    revenue_growth = info.get('revenueGrowth')
+    if revenue_growth:
+        metrics['revenue_growth'] = revenue_growth * 100
+        
+        if revenue_growth > 0.40:  # 40%+ growth
+            score += 10
+            reasons.append(f"Explosive revenue growth: {revenue_growth*100:.1f}%")
+        elif revenue_growth > 0.25:  # 25-40% growth
+            score += 7
+            reasons.append(f"Strong revenue growth: {revenue_growth*100:.1f}%")
+        elif revenue_growth > 0.15:  # 15-25% growth
+            score += 4
+            reasons.append(f"Solid revenue growth: {revenue_growth*100:.1f}%")
+    
+    # Earnings Momentum (10 points)
+    max_score += 10
+    forward_eps = info.get('forwardEps')
+    trailing_eps = info.get('trailingEps')
+    
+    if forward_eps and trailing_eps and trailing_eps > 0:
+        eps_momentum = (forward_eps / trailing_eps - 1)
+        metrics['eps_momentum'] = eps_momentum * 100
+        
+        if eps_momentum > 0.20:  # Estimates rising 20%+
+            score += 10
+            reasons.append(f"Strong earnings momentum: +{eps_momentum*100:.1f}% estimate increase")
+        elif eps_momentum > 0.10:
+            score += 7
+            reasons.append(f"Good earnings momentum: +{eps_momentum*100:.1f}%")
+        elif eps_momentum > 0:
+            score += 4
+            reasons.append(f"Positive estimate revisions: +{eps_momentum*100:.1f}%")
+    
+    # Operating Leverage (10 points)
+    max_score += 10
+    operating_margin = info.get('operatingMargins')
+    if operating_margin:
+        metrics['operating_margin'] = operating_margin * 100
+        
+        # Check if margins are expanding
+        try:
+            financials = ticker.financials
+            if len(financials.columns) >= 2:
+                recent_op_income = financials.loc['Operating Income'].iloc[0]
+                recent_revenue = financials.loc['Total Revenue'].iloc[0]
+                old_op_income = financials.loc['Operating Income'].iloc[-1]
+                old_revenue = financials.loc['Total Revenue'].iloc[-1]
+                
+                recent_margin = recent_op_income / recent_revenue
+                old_margin = old_op_income / old_revenue
+                margin_expansion = recent_margin - old_margin
+                
+                metrics['margin_expansion'] = margin_expansion * 100
+                
+                if margin_expansion > 0.03:  # 3%+ expansion
+                    score += 10
+                    reasons.append(f"Expanding margins: +{margin_expansion*100:.1f}pp")
+                elif margin_expansion > 0:
+                    score += 6
+                    reasons.append(f"Margin expansion: +{margin_expansion*100:.1f}pp")
+        except:
+            pass
+    
+    # === VALUATION & RISK/REWARD (20 points) ===
+    
+    # PEG Ratio (10 points)
+    max_score += 10
+    peg_ratio = info.get('pegRatio')
+    if peg_ratio:
+        metrics['peg_ratio'] = peg_ratio
+        
+        if peg_ratio < 1.0:
+            score += 10
+            reasons.append(f"Attractive valuation: PEG = {peg_ratio:.2f}")
+        elif peg_ratio < 1.5:
+            score += 7
+            reasons.append(f"Reasonable valuation: PEG = {peg_ratio:.2f}")
+        elif peg_ratio < 2.0:
+            score += 4
+    
+    # Upside to Target (10 points)
+    max_score += 10
+    target_high = info.get('targetHighPrice')
+    target_mean = info.get('targetMeanPrice')
+    
+    if target_high and current_price:
+        upside_to_high = (target_high / current_price - 1)
+        metrics['upside_to_high'] = upside_to_high * 100
+        
+        if upside_to_high > 0.50:  # 50%+ upside
+            score += 10
+            reasons.append(f"Huge upside potential: {upside_to_high*100:.0f}% to analyst high")
+        elif upside_to_high > 0.30:  # 30-50% upside
+            score += 7
+            reasons.append(f"Strong upside: {upside_to_high*100:.0f}% to analyst high")
+        elif upside_to_high > 0.20:  # 20-30% upside
+            score += 4
+    
+    # === INSTITUTIONAL VALIDATION (10 points) ===
+    
+    max_score += 10
+    institutional_ownership = info.get('heldPercentInstitutions')
+    if institutional_ownership:
+        metrics['institutional_ownership'] = institutional_ownership * 100
+        
+        # Sweet spot: 40-80% (not too crowded, not too ignored)
+        if 0.40 <= institutional_ownership <= 0.80:
+            score += 10
+            reasons.append(f"Healthy institutional interest: {institutional_ownership*100:.0f}%")
+        elif 0.30 <= institutional_ownership < 0.90:
+            score += 6
+    
+    # === QUALITY CHECK (10 points) ===
+    
+    max_score += 10
+    profit_margin = info.get('profitMargins')
+    if profit_margin and profit_margin > 0:
+        metrics['profit_margin'] = profit_margin * 100
+        
+        if profit_margin > 0.20:
+            score += 10
+            reasons.append(f"Excellent profitability: {profit_margin*100:.1f}% margins")
+        elif profit_margin > 0.10:
+            score += 6
+        elif profit_margin > 0.05:
+            score += 3
+    
+    # Calculate final rating
+    percentage_score = (score / max_score * 100) if max_score > 0 else 0
+    
+    # Druckenmiller-style rating
+    if percentage_score >= 80:
+        rating = "HIGH CONVICTION BUY - Size Up"
+        suggested_position = "15-30%"
+    elif percentage_score >= 65:
+        rating = "STRONG BUY - Core Position"
+        suggested_position = "10-20%"
+    elif percentage_score >= 50:
+        rating = "BUY - Standard Position"
+        suggested_position = "5-10%"
+    elif percentage_score >= 35:
+        rating = "WATCH - Starter Position"
+        suggested_position = "2-5%"
+    else:
+        rating = "PASS - Insufficient Momentum"
+        suggested_position = "0%"
+    
+    return {
+        'ticker': ticker_symbol,
+        'score': score,
+        'max_score': max_score,
+        'percentage': percentage_score,
+        'rating': rating,
+        'suggested_position': suggested_position,
+        'metrics': metrics,
+        'reasons': reasons,
+        'company_name': info.get('longName', ticker_symbol)
+    }
+
+# Example usage
+def analyze_stock_druckenmiller(symbol):
+    result = druckenmiller_screener(symbol)
+    
+    print(f"\n{'='*70}")
+    print(f"DRUCKENMILLER ANALYSIS: {result['company_name']} ({result['ticker']})")
+    print(f"{'='*70}")
+    print(f"\nSCORE: {result['score']}/{result['max_score']} ({result['percentage']:.1f}%)")
+    print(f"RATING: {result['rating']}")
+    print(f"SUGGESTED POSITION SIZE: {result['suggested_position']}")
+    
+    print(f"\nKEY FACTORS:")
+    for reason in result['reasons']:
+        print(f"  ✓ {reason}")
+    
+    print(f"\nKEY METRICS:")
+    for key, value in result['metrics'].items():
+        if isinstance(value, (int, float)):
+            print(f"  {key}: {value:.2f}")
+        else:
+            print(f"  {key}: {value}")
+    
+    return result
+
+# Run analysis
+analyze_stock_druckenmiller('NVDA')
+```
+
+## Druckenmiller's Famous Trades (Learning Examples)
+
+### 1. Shorting the Pound (1992) - "Breaking the Bank of England"
+- **Macro Thesis:** UK couldn't maintain pound's peg to Deutsche Mark
+- **Entry:** Massive short position (reportedly $10B+)
+- **Conviction:** Bet the farm - sized enormous position
+- **Risk/Reward:** Limited downside (peg floor), massive upside (devaluation)
+- **Result:** $1B+ profit in single trade
+- **Lesson:** When macro setup is asymmetric, size aggressively
+
+### 2. German Bonds (1990)
+- **Macro Thesis:** German reunification would require massive spending → inflation → higher rates
+- **Entry:** Short German bonds
+- **Result:** Huge profits as rates rose
+- **Lesson:** Major policy shifts create exploitable dislocations
+
+### 3. Tech Bubble (Late 1990s)
+- **Macro Thesis:** Internet would transform economy
+- **Entry:** Long internet/tech stocks despite high valuations
+- **Exit:** Sold in early 2000, avoided crash
+- **Lesson:** Ride powerful trends but stay flexible; exit when momentum breaks
+
+### 4. 2008 Financial Crisis
+- **Macro Thesis:** Housing bubble + leverage = systemic crisis
+- **Entry:** Short financials, long gold
+- **Flexibility:** Flipped to long stocks aggressively in 2009 when Fed acted
+- **Lesson:** Massive policy response changes the game; adapt quickly
+
+### 5. 2020 COVID Trade
+- **Macro Thesis:** Fed money printing → inflation → commodity boom
+- **Entry:** Long commodities, materials, inflation beneficiaries
+- **Result:** Massive gains in 2020-2021
+- **Lesson:** "Don't fight the Fed" - follow liquidity
+
+## Key Differences from Other Strategies
+
+| Aspect | Druckenmiller | Buffett | Graham | Roaring Kitty |
+|--------|---------------|---------|--------|---------------|
+| **Time Horizon** | Days to years | Forever | 2-3 years | Months to 2 years |
+| **Primary Focus** | Macro trends + momentum | Quality moats | Deep value | Value + squeeze |
+| **Position Sizing** | Massive when convicted | Steady, methodical | Diversified | Options leverage |
+| **Flexibility** | Extremely flexible | Buy and hold | Patient holding | Patient but tactical |
+| **Key Driver** | Fed policy & liquidity | Business quality | Asset value | Contrarian setup |
+| **Valuation** | Tertiary concern | Important | Primary | Primary |
+| **Turnover** | High | Very low | Medium | Medium |
+| **Risk Management** | Tight stops, size cuts | Time diversification | Diversification | Position limits |
+| **Top-down vs Bottom-up** | Top-down first | Bottom-up only | Bottom-up only | Bottom-up first |
+
+## Critical Success Factors
+
+### 1. Macro Awareness
+- **Must track:** Fed policy, interest rates, liquidity, currencies, credit spreads
+- **Tools:** Economic calendars, Fed speeches, central bank meetings
+- **Mindset:** "What is the Fed/ECB/BOJ doing?" drives everything
+
+### 2. Intellectual Flexibility
+- **Key trait:** No ego attachment to positions
+- **Practice:** Can go from 100% long to 100% short if thesis breaks
+- **Example:** If you're long tech and Fed pivots hawkish, flip immediately
+
+### 3. Position Sizing Discipline
+- **Rule:** Conviction should determine size
+- **Implementation:** 
+  - Low conviction = small position or cash
+  - Medium conviction = 5-10%
+  - High conviction = 15-30%+
+- **Corollary:** If not worth a big position, probably not worth any position
+
+### 4. Risk/Reward Obsession
+- **Before every trade:** Calculate upside vs downside
+- **Minimum:** 3:1, preferably 5:1+
+- **Action:** If risk/reward deteriorates, cut position size or exit
+
+### 5. Cutting Losers Fast
+- **Philosophy:** Preservation of capital is paramount
+- **Rule:** If thesis is broken, exit immediately (even at a loss)
+- **Discipline:** Never average down unless thesis is intact and just timing was off
+
+### 6. Letting Winners Run
+- **Philosophy:** Home runs make the year
+- **Practice:** Trail stops upward, add to winners
+- **Example:** If stock up 50% and momentum still strong, add more
+
+## Red Flags (Druckenmiller Would Avoid or Short)
+
+- **Fighting the Fed** - Don't be long growth when Fed is aggressively tightening
+- **Broken momentum** - Stock breaks key technical support = exit
+- **Deteriorating fundamentals** - Earnings revisions turning negative = sell
+- **Valuation extremes** - Even great stocks become overpriced (dotcom bubble lesson)
+- **Crowded trades** - When everyone is positioned same way, be contrarian
+- **Poor risk/reward** - If upside limited but downside large, pass or short
+- **Macro headwinds** - Don't fight macro trends (e.g., long commodities in strong dollar environment)
+
+## The Druckenmiller Checklist
+
+Before taking a position, answer YES to most of these:
+
+1. ✓ Does this fit current macro regime?
+2. ✓ Is there a clear catalyst (earnings, policy, technical breakout)?
+3. ✓ Does this have strong momentum (technical + fundamental)?
+4. ✓ Is risk/reward at least 3:1, preferably 5:1+?
+5. ✓ Where's my stop loss? (must have one)
+6. ✓ What's my position size based on conviction?
+7. ✓ Am I comfortable with this size given my portfolio heat?
+8. ✓ What would make me exit (both positive and negative)?
+9. ✓ Is the trend my friend or am I fighting it?
+
+If you can't answer these clearly, position is not ready.
+
+## Sample Portfolio Construction
+
+### High Conviction Environment (Bull Market, Easy Fed)
+```
+- Top idea #1: 25% (macro tailwind + strong momentum)
+- Top idea #2: 20% (secular growth theme)
+- Top idea #3: 15% (breakout play)
+- Supporting positions: 3-5 at 5-10% each (25-40%)
+- Cash: 0-10% (stay invested in favorable environment)
+```
+
+### Uncertain Environment
+```
+- Top idea #1: 15%
+- Top idea #2: 10%
+- Supporting positions: 3-5 at 5% each (15-25%)
+- Hedges: 10-20% (short index, long puts, defensive stocks)
+- Cash: 30-40% (preserve capital when edge is unclear)
+```
+
+### Bear Market/Risk-Off
+```
+- Short positions: 30-50% (index shorts, sector shorts)
+- Defensive longs: 20-30% (gold, utilities, consumer staples)
+- Cash: 20-50% (capital preservation mode)
+- Opportunistic longs: 0-20% (oversold quality names)
+```
+
+## Conclusion
+
+Stanley Druckenmiller's approach is the antithesis of passive investing. It requires:
+- **Constant macro monitoring** - The Fed, liquidity, currencies drive markets
+- **Aggressive conviction-based sizing** - Go big when setup is right
+- **Ruthless flexibility** - Change your mind when data changes
+- **Momentum focus** - Ride trends, don't fight them
+- **Asymmetric risk/reward** - Only take trades with massive upside vs limited downside
+
+The key insight: **It's not about being right or wrong, it's about making a lot when right and losing little when wrong.** This requires sizing large in high-conviction, asymmetric setups while cutting losses quickly when proven wrong.
+
+Unlike Buffett (buy and hold quality) or Graham (buy cheap and wait), Druckenmiller **actively trades** based on evolving macro conditions. He's willing to be 100% long, 100% short, or 100% cash depending on the opportunity set. Success requires intellectual flexibility, discipline, and the courage to size aggressively when conviction is high.

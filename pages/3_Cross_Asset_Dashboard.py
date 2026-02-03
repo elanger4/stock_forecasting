@@ -161,7 +161,7 @@ with nav_col3:
 with nav_col4:
     st.markdown("**🌍 Cross-Asset Dashboard** *(current)*")
 with nav_col5:
-    st.page_link("pages/4_Magic_Screener.py", label="👉 Magic Screener")
+    st.page_link("pages/4_Personalities.py", label="👉 Personalities")
 
 st.markdown("---")
 
