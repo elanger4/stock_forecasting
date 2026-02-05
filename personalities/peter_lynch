@@ -1,0 +1,1524 @@
+# Peter Lynch Investment Strategy Guide
+
+## Overview
+Peter Lynch is one of the most successful mutual fund managers in history, running Fidelity's Magellan Fund from 1977-1990 and achieving an astounding 29.2% annual return - more than double the S&P 500. What makes Lynch special is his **accessibility**: unlike most investment legends, his approach is designed for everyday investors. His philosophy centers on "invest in what you know," finding simple businesses before Wall Street discovers them, and using common sense over complex financial models.
+
+## Core Investment Philosophy
+
+**Know What You Own + Simple Businesses + Long-Term Patience = Tenbaggers**
+
+Lynch's approach is built on:
+1. Your everyday experiences give you investment edge over professionals
+2. Simple businesses you can explain to a child are best
+3. Look for companies in boring, unsexy industries (less competition from analysts)
+4. A few big winners (10-baggers, 20-baggers) will make your portfolio
+5. You don't need to be right about everything - just don't lose big on your losers
+6. The stock market will always recover from downturns given enough time
+
+## The Six Categories of Stocks
+
+Lynch categorizes every stock into one of six types. Each requires different analysis and has different risk/reward profiles:
+
+### 1. Slow Growers
+**Definition:** Large, mature companies growing slightly faster than GDP
+
+**Examples:** Utilities, old-line manufacturers, Coca-Cola (in mature phase)
+
+**Characteristics:**
+- Revenue growth: 2-4% annually
+- Pay substantial dividends (4-6%+)
+- Very stable, boring businesses
+- Minimal growth potential
+
+**When to Buy:** Never, unless dividend yield is exceptional
+**When to Sell:** When dividend is cut or business deteriorates
+
+**Lynch's View:** "Slow growers are usually in mature industries. I avoid them."
+
+```python
+def is_slow_grower(ticker_info):
+    """
+    Identify slow grower characteristics
+    """
+    revenue_growth = ticker_info.get('revenueGrowth', 0)
+    dividend_yield = ticker_info.get('dividendYield', 0)
+    market_cap = ticker_info.get('marketCap', 0)
+    
+    is_slow = (
+        revenue_growth < 0.06 and           # Less than 6% growth
+        market_cap > 50_000_000_000 and     # Very large cap ($50B+)
+        dividend_yield > 0.03               # 3%+ dividend
+    )
+    
+    return is_slow
+
+# Example
+# AT&T, Verizon, Duke Energy = Slow Growers
+```
+
+### 2. Stalwarts
+**Definition:** Large companies growing 10-12% annually, household names
+
+**Examples:** Coca-Cola, Procter & Gamble, Johnson & Johnson, Walmart
+
+**Characteristics:**
+- Revenue growth: 10-12% annually
+- Market cap: $10B+
+- Defensive, consistent earnings
+- Won't make you rich quickly but won't lose you money
+
+**When to Buy:** When price dips 30-40% below normal valuation
+**When to Sell:** When price rises 30-50% above your purchase, or P/E gets too high
+**Expected Return:** 30-50% over 2-3 years, then sell and rotate
+
+**Lynch's View:** "Stalwarts are good for protection during recessions and for 30-50% gains. I keep 10-20% of portfolio in stalwarts."
+
+```python
+def is_stalwart(ticker_info):
+    """
+    Identify stalwart characteristics
+    """
+    revenue_growth = ticker_info.get('revenueGrowth', 0)
+    market_cap = ticker_info.get('marketCap', 0)
+    roe = ticker_info.get('returnOnEquity', 0)
+    
+    is_stalwart = (
+        0.08 <= revenue_growth <= 0.15 and  # 8-15% growth
+        market_cap > 10_000_000_000 and     # Large cap ($10B+)
+        roe > 0.15                          # Strong ROE
+    )
+    
+    return is_stalwart
+
+# Examples: KO, PG, JNJ, WMT, HD, MCD
+```
+
+### 3. Fast Growers (Lynch's Favorite!)
+**Definition:** Small, aggressive companies growing 20-25%+ annually
+
+**Examples:** Dunkin' Donuts (when Lynch bought), Taco Bell, The Limited, Pier 1 (in their growth phases)
+
+**Characteristics:**
+- Revenue growth: 20-50% annually
+- Market cap: Typically under $5B when Lynch buys
+- Expanding rapidly (new stores, new markets, new products)
+- Haven't yet saturated their market
+
+**When to Buy:** Early in growth phase, before Wall Street discovers them
+**When to Sell:** When growth slows, story changes, or stock gets absurdly expensive
+**Expected Return:** Multi-baggers (10x+) if you catch them early
+
+**Lynch's View:** "This is where the tenbaggers come from. I'd put 30-40% of my portfolio in fast growers."
+
+```python
+def is_fast_grower(ticker_info):
+    """
+    Identify fast grower characteristics
+    
+    These are Lynch's favorites - potential 10-baggers
+    """
+    revenue_growth = ticker_info.get('revenueGrowth', 0)
+    earnings_growth = ticker_info.get('earningsGrowth', 0)
+    market_cap = ticker_info.get('marketCap', 0)
+    debt_to_equity = ticker_info.get('debtToEquity', 0)
+    
+    is_fast = (
+        revenue_growth > 0.20 and           # 20%+ revenue growth
+        earnings_growth > 0.20 and          # 20%+ earnings growth
+        market_cap < 5_000_000_000 and      # Under $5B (room to grow)
+        debt_to_equity < 0.50               # Not overleveraged
+    )
+    
+    # Additional check: Is there still runway?
+    # This requires qualitative analysis of market saturation
+    
+    return is_fast
+
+# Modern examples might be: 
+# - Regional restaurant chains before national expansion
+# - Software companies in growing niches
+# - Retail concepts in early expansion phase
+```
+
+**The Fast Grower Checklist:**
+```python
+fast_grower_questions = [
+    "Can the company replicate its success in new markets?",
+    "What's the total addressable market?",
+    "How saturated is current market penetration?",
+    "Are unit economics working? (Each new store profitable)",
+    "Is growth sustainable or just a fad?",
+    "Does management have track record of execution?",
+    "Can they maintain quality during rapid expansion?",
+    "What could stop the growth? (Competition, saturation, execution)"
+]
+
+# If you can't answer these confidently, don't buy
+```
+
+### 4. Cyclicals
+**Definition:** Companies whose fortunes rise and fall with economic cycles
+
+**Examples:** Auto manufacturers, airlines, steel, chemicals, housing, commodities
+
+**Characteristics:**
+- Boom and bust earnings patterns
+- Very sensitive to economic cycle
+- Can look "cheap" (low P/E) at exact wrong time (peak earnings)
+- Can look "expensive" (high P/E) at exact right time (trough earnings)
+
+**When to Buy:** Early in economic recovery, when everyone hates them
+**When to Sell:** When recovery is obvious to everyone, business is booming
+**Key Mistake:** Buying because P/E looks low (it's low because earnings are about to collapse!)
+
+**Lynch's View:** "Cyclicals are the most dangerous. You must buy them at the right time (early recovery) and sell at the right time (late expansion). Most investors do the opposite."
+
+```python
+def is_cyclical(ticker_info, ticker_symbol):
+    """
+    Identify cyclical stocks
+    
+    These are DANGEROUS if you don't time them right
+    """
+    sector = ticker_info.get('sector')
+    industry = ticker_info.get('industry')
+    
+    cyclical_sectors = [
+        'Basic Materials',
+        'Industrials',
+        'Consumer Cyclical',
+        'Energy'
+    ]
+    
+    cyclical_industries = [
+        'Auto Manufacturers',
+        'Airlines',
+        'Steel',
+        'Chemicals',
+        'Homebuilding',
+        'Hotels',
+        'Paper & Forest Products'
+    ]
+    
+    is_cyclical = (
+        sector in cyclical_sectors or
+        industry in cyclical_industries
+    )
+    
+    return is_cyclical
+
+# Examples: F (Ford), AAL (American Airlines), NUE (Nucor), 
+#           DHI (DR Horton), LEN (Lennar)
+```
+
+**The Cyclical Trap:**
+```python
+# WRONG approach to cyclicals:
+def bad_cyclical_analysis():
+    """
+    What NOT to do with cyclicals
+    """
+    # Year 2006 (housing boom peak):
+    homebuilder = {
+        'ticker': 'DHI',
+        'earnings': 10.00,      # Peak earnings
+        'price': 60,
+        'pe_ratio': 6.0         # Looks cheap!
+    }
+    
+    # Investor thinks: "P/E of 6! What a bargain!"
+    # Investor buys...
+    
+    # Year 2008 (housing bust):
+    homebuilder_later = {
+        'ticker': 'DHI',
+        'earnings': -5.00,      # Losses!
+        'price': 10,            # Stock down 83%
+        'pe_ratio': 'N/A'       # Negative earnings
+    }
+    
+    # This is the cyclical trap!
+
+# RIGHT approach to cyclicals:
+def good_cyclical_analysis():
+    """
+    How to analyze cyclicals properly
+    """
+    # Look at:
+    # 1. Where are we in the economic cycle?
+    # 2. What's inventory situation? (High inventory = trouble ahead)
+    # 3. Are factories running at capacity? (Peak capacity = peak earnings)
+    # 4. What's management saying about future demand?
+    # 5. Price-to-book (better metric than P/E for cyclicals)
+    
+    # Buy when: Industry is depressed, inventories low, P/B below 1.0
+    # Sell when: Industry booming, inventories rising, P/B above 2.0
+```
+
+### 5. Turnarounds
+**Definition:** Companies in trouble that are restructuring, cutting costs, selling assets
+
+**Examples:** Chrysler (1980s), Apple (late 1990s), companies in bankruptcy
+
+**Characteristics:**
+- Recent operational or financial troubles
+- New management or new strategy
+- Cost-cutting initiatives
+- Asset sales or restructuring
+- Negative sentiment
+
+**When to Buy:** After worst is over, signs of stabilization appear
+**When to Sell:** When turnaround is complete and priced in
+**Risk Level:** HIGH - many turnarounds fail
+
+**Lynch's View:** "Turnarounds can be profitable, but you need to understand why the company got in trouble and whether the fix is working. I prefer to wait for evidence of recovery."
+
+```python
+def is_turnaround(ticker_info, ticker_symbol):
+    """
+    Identify potential turnarounds
+    
+    High risk, high reward if successful
+    """
+    import yfinance as yf
+    
+    ticker = yf.Ticker(ticker_symbol)
+    info = ticker.info
+    financials = ticker.financials
+    
+    # Signs of turnaround situation:
+    turnaround_signals = []
+    
+    # 1. Recent losses or declining revenue
+    try:
+        recent_net_income = financials.loc['Net Income'].iloc[0]
+        prev_net_income = financials.loc['Net Income'].iloc[1]
+        
+        if recent_net_income < 0 or recent_net_income < prev_net_income * 0.5:
+            turnaround_signals.append("Recent earnings trouble")
+    except:
+        pass
+    
+    # 2. High debt load
+    debt_to_equity = info.get('debtToEquity', 0)
+    if debt_to_equity > 1.5:
+        turnaround_signals.append("High debt burden")
+    
+    # 3. Stock down significantly from highs
+    current_price = info.get('currentPrice', 0)
+    fifty_two_high = info.get('fiftyTwoWeekHigh', 1)
+    if current_price < fifty_two_high * 0.5:
+        turnaround_signals.append("Down 50%+ from highs")
+    
+    # 4. New management (would need to check manually)
+    # 5. Asset sales or restructuring (need news research)
+    
+    is_turnaround = len(turnaround_signals) >= 2
+    
+    return is_turnaround, turnaround_signals
+
+# Examples: Companies coming out of bankruptcy, 
+#           businesses with new CEOs fixing operations
+```
+
+**Turnaround Checklist:**
+```python
+turnaround_questions = [
+    "What went wrong? Is it fixable?",
+    "Is the problem industry-wide (bad) or company-specific (good)?",
+    "Is there a new, capable management team?",
+    "Are they cutting costs effectively?",
+    "Is cash flow improving?",
+    "Can they survive long enough for turnaround to work?",
+    "What's the bankruptcy risk?",
+    "Are there any green shoots? (small signs of improvement)"
+]
+
+# Only invest in turnarounds if you see concrete evidence of improvement
+```
+
+### 6. Asset Plays
+**Definition:** Companies with valuable hidden assets not reflected in stock price
+
+**Examples:** Companies with real estate, natural resources, patents, tax loss carryforwards
+
+**Characteristics:**
+- Book value significantly understates true asset value
+- Market doesn't recognize hidden assets
+- Often boring, unloved companies
+- Could be liquidated for more than stock price
+
+**When to Buy:** When you can value the assets and they're worth much more than market cap
+**When to Sell:** When assets are recognized/monetized or when near asset value
+**Risk Level:** LOW to MEDIUM (assets provide downside protection)
+
+**Lynch's View:** "Asset plays are safe bets. Even if the business struggles, the assets have value. Look for companies trading below net-net working capital or with valuable real estate."
+
+```python
+def is_asset_play(ticker_symbol):
+    """
+    Identify potential asset plays
+    
+    These provide margin of safety through hard assets
+    """
+    import yfinance as yf
+    
+    ticker = yf.Ticker(ticker_symbol)
+    info = ticker.info
+    balance_sheet = ticker.balance_sheet
+    
+    market_cap = info.get('marketCap', 0)
+    
+    asset_play_signals = []
+    
+    # 1. Trading below book value
+    price_to_book = info.get('priceToBook', 10)
+    if price_to_book < 1.0:
+        asset_play_signals.append(f"P/B = {price_to_book:.2f} (below book)")
+    
+    # 2. Significant cash relative to market cap
+    total_cash = info.get('totalCash', 0)
+    if total_cash > market_cap * 0.5:
+        asset_play_signals.append(f"Cash = {total_cash/market_cap:.1%} of market cap")
+    
+    # 3. Real estate or natural resources
+    try:
+        ppe = balance_sheet.loc['Net PPE'].iloc[0]  # Property, plant, equipment
+        if ppe > market_cap:
+            asset_play_signals.append("PPE exceeds market cap")
+    except:
+        pass
+    
+    # 4. Net-net working capital (Graham's metric)
+    try:
+        current_assets = balance_sheet.loc['Current Assets'].iloc[0]
+        total_liabilities = balance_sheet.loc['Total Liabilities Net Minority Interest'].iloc[0]
+        
+        net_net = current_assets - total_liabilities
+        if net_net > market_cap:
+            asset_play_signals.append("Net-net working capital > market cap!")
+    except:
+        pass
+    
+    is_asset = len(asset_play_signals) >= 1
+    
+    return is_asset, asset_play_signals
+
+# Examples: Companies with valuable real estate (retail chains owning their properties),
+#           Mining companies with proven reserves,
+#           Companies with valuable patents or brand names
+```
+
+## The "Perfect" Stock According to Lynch
+
+Lynch's ideal investment combines multiple attractive characteristics:
+
+```python
+def lynch_perfect_stock_checklist(ticker_symbol):
+    """
+    Peter Lynch's ideal stock characteristics
+    
+    The more of these boxes you check, the better
+    """
+    import yfinance as yf
+    
+    ticker = yf.Ticker(ticker_symbol)
+    info = ticker.info
+    
+    perfect_stock_traits = []
+    
+    # 1. Boring name and boring business
+    company_name = info.get('longName', '')
+    boring_industries = ['waste management', 'funeral', 'parking', 'storage']
+    if any(word in company_name.lower() for word in boring_industries):
+        perfect_stock_traits.append("✓ Boring, unglamorous business")
+    
+    # 2. Does something dull or disagreeable
+    # (waste, funeral homes, industrial cleaning, etc.)
+    
+    # 3. It's a spinoff (institutions dump it, creates opportunity)
+    # Would need to check corporate actions manually
+    
+    # 4. Institutions don't own it / analysts don't follow it
+    institutional_ownership = info.get('heldPercentInstitutions', 1)
+    analyst_count = info.get('numberOfAnalystOpinions', 100)
+    
+    if institutional_ownership < 0.30:
+        perfect_stock_traits.append("✓ Low institutional ownership (under-followed)")
+    
+    if analyst_count < 5:
+        perfect_stock_traits.append("✓ Few analysts cover it (Wall Street ignores)")
+    
+    # 5. Rumors about something bad (gives you entry point)
+    # Would need sentiment/news analysis
+    
+    # 6. In a no-growth industry
+    sector = info.get('sector')
+    revenue_growth = info.get('revenueGrowth', 0.10)
+    if revenue_growth < 0.05:
+        perfect_stock_traits.append("✓ No-growth or slow-growth industry")
+    
+    # 7. It's got a niche (monopolistic characteristics)
+    # Qualitative - need to assess competitive position
+    
+    # 8. People have to keep buying their product
+    # (razor blades, soft drinks, cigarettes, trash collection)
+    recurring_industries = ['utilities', 'waste', 'consumer staples']
+    industry = info.get('industry', '').lower()
+    if any(recurring in industry for recurring in recurring_industries):
+        perfect_stock_traits.append("✓ Recurring revenue model")
+    
+    # 9. It's a user of technology (not high-tech itself)
+    if sector != 'Technology':
+        perfect_stock_traits.append("✓ Not a high-tech company (more predictable)")
+    
+    # 10. Insiders are buying
+    insider_ownership = info.get('heldPercentInsiders', 0)
+    if insider_ownership > 0.15:
+        perfect_stock_traits.append("✓ High insider ownership (skin in the game)")
+    
+    # 11. Company is buying back stock
+    # Would check cashflow statement for buybacks
+    
+    score = len(perfect_stock_traits)
+    
+    print(f"\n{company_name} - Lynch Perfect Stock Score: {score}/11")
+    print("="*60)
+    for trait in perfect_stock_traits:
+        print(trait)
+    
+    if score >= 8:
+        rating = "EXCELLENT - Very Lynch-like"
+    elif score >= 6:
+        rating = "GOOD - Strong candidate"
+    elif score >= 4:
+        rating = "DECENT - Worth researching"
+    else:
+        rating = "WEAK - Doesn't fit Lynch criteria"
+    
+    print(f"\nRating: {rating}")
+    
+    return score, perfect_stock_traits
+
+# Example: Waste Management, funeral home operators, etc.
+```
+
+## Lynch's Key Metrics & Analysis
+
+### 1. The P/E Ratio (Most Important!)
+
+Lynch is famous for the **PEG Ratio** (P/E to Growth ratio):
+
+```python
+def calculate_peg_ratio(ticker_symbol):
+    """
+    Lynch's favorite metric: PEG Ratio
+    
+    PEG = P/E Ratio / Growth Rate
+    
+    Rules:
+    - PEG < 0.5 = Very attractive
+    - PEG < 1.0 = Fairly valued
+    - PEG > 1.5 = Expensive
+    - PEG > 2.0 = Very expensive
+    """
+    import yfinance as yf
+    
+    ticker = yf.Ticker(ticker_symbol)
+    info = ticker.info
+    
+    # Get P/E ratio
+    pe_ratio = info.get('trailingPE') or info.get('forwardPE')
+    
+    # Get growth rate (use earnings growth)
+    growth_rate = info.get('earningsGrowth', 0) * 100  # Convert to percentage
+    
+    if not pe_ratio or not growth_rate or growth_rate <= 0:
+        return None, "Insufficient data for PEG calculation"
+    
+    # Calculate PEG
+    peg = pe_ratio / growth_rate
+    
+    # Lynch's interpretation
+    if peg < 0.5:
+        interpretation = "VERY ATTRACTIVE - Potentially undervalued"
+    elif peg < 1.0:
+        interpretation = "FAIR VALUE - Reasonable price for growth"
+    elif peg < 1.5:
+        interpretation = "SLIGHTLY EXPENSIVE - Proceed with caution"
+    elif peg < 2.0:
+        interpretation = "EXPENSIVE - Growth already priced in"
+    else:
+        interpretation = "VERY EXPENSIVE - Avoid unless exceptional story"
+    
+    print(f"\n{info.get('longName')} ({ticker_symbol})")
+    print(f"P/E Ratio: {pe_ratio:.2f}")
+    print(f"Growth Rate: {growth_rate:.1f}%")
+    print(f"PEG Ratio: {peg:.2f}")
+    print(f"Assessment: {interpretation}")
+    
+    return peg, interpretation
+
+# Example
+calculate_peg_ratio('AAPL')
+```
+
+**Lynch's PEG Rule:**
+- **PEG < 1.0:** Stock is cheaper than its growth rate suggests (good buy)
+- **PEG = 1.0:** Fair value (growth equals P/E)
+- **PEG > 1.5:** Overvalued (paying too much for growth)
+
+**Important caveat:** Only works for fast growers and stalwarts, NOT for cyclicals or turnarounds!
+
+### 2. The Two-Minute Drill
+
+Lynch's famous "elevator pitch" test - can you explain why you own a stock in two minutes?
+
+```python
+def two_minute_drill(ticker_symbol):
+    """
+    Lynch's test: Can you explain your investment thesis simply?
+    
+    You should be able to answer these in 2 minutes:
+    """
+    questions = [
+        "What does the company do? (one sentence)",
+        "Why will it be successful? (specific reason)",
+        "What needs to happen for stock to go up?",
+        "What could go wrong?",
+        "What category is it? (fast grower, stalwart, etc.)",
+        "What's the story in one paragraph?"
+    ]
+    
+    print(f"\nTWO-MINUTE DRILL: {ticker_symbol}")
+    print("="*60)
+    print("Can you answer these questions clearly and simply?\n")
+    
+    for i, question in enumerate(questions, 1):
+        print(f"{i}. {question}")
+    
+    print("\nIf you can't answer these, you don't understand the business!")
+    print("Lynch: 'Never invest in any idea you can't illustrate with a crayon.'")
+
+# If you can't do this drill, don't buy the stock!
+```
+
+### 3. The Story
+
+Lynch emphasizes understanding the **narrative** behind a stock:
+
+```python
+def evaluate_lynch_story(ticker_symbol):
+    """
+    Lynch's approach to the investment story
+    
+    Different stories for different stock types
+    """
+    
+    story_frameworks = {
+        'Fast Grower': [
+            "Company has X stores in Y states",
+            "Plans to expand to Z states over next N years",
+            "Each new store generates $M in revenue",
+            "Still only penetrated W% of potential market",
+            "Key risk: Can they maintain quality during expansion?"
+        ],
+        
+        'Stalwart': [
+            "Mature company with steady market share",
+            "Trades at P/E of X, historically averages Y",
+            "Currently depressed due to temporary issue Z",
+            "When Z resolves, P/E should revert to Y",
+            "Provides 30-50% upside when multiple normalizes"
+        ],
+        
+        'Cyclical': [
+            "Industry is currently in trough (year 3 of downturn)",
+            "Historical cycles last 5-7 years",
+            "Inventories at 10-year lows (good sign)",
+            "Competitors going bankrupt (supply leaving market)",
+            "Early signs of recovery: orders picking up",
+            "Buy now, sell when boom is obvious to everyone"
+        ],
+        
+        'Turnaround': [
+            "Company had problems: poor management, high costs",
+            "New CEO brought in 18 months ago",
+            "Initiated cost-cutting: closed 20% of stores",
+            "Margins improving from 5% to 8% (sustainable)",
+            "Cash flow turning positive",
+            "Stock still depressed from old problems"
+        ],
+        
+        'Asset Play': [
+            "Company owns real estate worth $X per share",
+            "Stock trades at $Y per share (below asset value)",
+            "Catalyst: Management exploring sale of properties",
+            "Downside protected by asset value",
+            "Could unlock value through sale/spinoff"
+        ]
+    }
+    
+    print("LYNCH'S STORY FRAMEWORK")
+    print("="*60)
+    print("Your investment thesis should follow one of these templates:\n")
+    
+    for category, story in story_frameworks.items():
+        print(f"\n{category}:")
+        for point in story:
+            print(f"  • {point}")
+    
+    print("\n" + "="*60)
+    print("The simpler and clearer your story, the better!")
+
+evaluate_lynch_story('EXAMPLE')
+```
+
+### 4. Key Financial Metrics
+
+```python
+def lynch_financial_analysis(ticker_symbol):
+    """
+    Lynch's essential financial checks
+    """
+    import yfinance as yf
+    
+    ticker = yf.Ticker(ticker_symbol)
+    info = ticker.info
+    financials = ticker.financials
+    balance_sheet = ticker.balance_sheet
+    cashflow = ticker.cashflow
+    
+    print(f"\nLYNCH FINANCIAL ANALYSIS: {ticker_symbol}")
+    print("="*60)
+    
+    # 1. Sales and earnings growth (most important!)
+    print("\n1. GROWTH METRICS")
+    revenue_growth = info.get('revenueGrowth', 0) * 100
+    earnings_growth = info.get('earningsGrowth', 0) * 100
+    
+    print(f"   Revenue Growth: {revenue_growth:.1f}%")
+    print(f"   Earnings Growth: {earnings_growth:.1f}%")
+    
+    if revenue_growth > 15 and earnings_growth > 15:
+        print("   ✓ Strong growth - potential fast grower")
+    elif 5 <= revenue_growth <= 15:
+        print("   ✓ Steady growth - potential stalwart")
+    else:
+        print("   ⚠ Slow/negative growth - be cautious")
+    
+    # 2. P/E and PEG
+    print("\n2. VALUATION")
+    pe = info.get('trailingPE', 0)
+    peg = info.get('pegRatio', 0)
+    
+    print(f"   P/E Ratio: {pe:.2f}")
+    print(f"   PEG Ratio: {peg:.2f}")
+    
+    if peg < 1.0:
+        print("   ✓ Attractive valuation relative to growth")
+    elif peg < 1.5:
+        print("   → Fair valuation")
+    else:
+        print("   ⚠ Expensive - growth already priced in")
+    
+    # 3. Debt situation
+    print("\n3. BALANCE SHEET")
+    debt_to_equity = info.get('debtToEquity', 0)
+    current_ratio = info.get('currentRatio', 0)
+    
+    print(f"   Debt-to-Equity: {debt_to_equity:.2f}")
+    print(f"   Current Ratio: {current_ratio:.2f}")
+    
+    if debt_to_equity < 0.25:
+        print("   ✓ Very low debt - financially strong")
+    elif debt_to_equity < 0.50:
+        print("   ✓ Manageable debt")
+    elif debt_to_equity < 1.0:
+        print("   → Moderate debt - monitor carefully")
+    else:
+        print("   ⚠ High debt - risky for non-financials")
+    
+    # 4. Free cash flow
+    print("\n4. CASH FLOW")
+    free_cashflow = info.get('freeCashflow', 0)
+    operating_cashflow = info.get('operatingCashflow', 0)
+    
+    if free_cashflow > 0:
+        fcf_margin = free_cashflow / info.get('totalRevenue', 1) * 100
+        print(f"   Free Cash Flow: ${free_cashflow/1e9:.2f}B")
+        print(f"   FCF Margin: {fcf_margin:.1f}%")
+        print("   ✓ Positive free cash flow")
+    else:
+        print("   ⚠ Negative free cash flow - burning cash")
+    
+    # 5. Insider ownership
+    print("\n5. OWNERSHIP")
+    insider_ownership = info.get('heldPercentInsiders', 0) * 100
+    institutional_ownership = info.get('heldPercentInstitutions', 0) * 100
+    
+    print(f"   Insider Ownership: {insider_ownership:.1f}%")
+    print(f"   Institutional Ownership: {institutional_ownership:.1f}%")
+    
+    if insider_ownership > 10:
+        print("   ✓ Significant insider ownership (skin in the game)")
+    
+    if institutional_ownership < 30:
+        print("   ✓ Low institutional ownership (under-followed)")
+    
+    # 6. Inventory (for retailers/manufacturers)
+    print("\n6. INVENTORY TRENDS")
+    try:
+        inventory = balance_sheet.loc['Inventory']
+        revenue = financials.loc['Total Revenue']
+        
+        # Inventory turnover
+        recent_inventory = inventory.iloc[0]
+        recent_revenue = revenue.iloc[0]
+        inventory_turnover = recent_revenue / recent_inventory
+        
+        print(f"   Inventory Turnover: {inventory_turnover:.2f}x per year")
+        
+        # Check if inventory growing faster than sales (bad sign)
+        if len(inventory) > 1 and len(revenue) > 1:
+            inv_growth = (inventory.iloc[0] / inventory.iloc[1] - 1) * 100
+            rev_growth = (revenue.iloc[0] / revenue.iloc[1] - 1) * 100
+            
+            if inv_growth > rev_growth + 5:
+                print(f"   ⚠ Inventory growing faster than sales!")
+                print(f"      Inventory +{inv_growth:.1f}% vs Sales +{rev_growth:.1f}%")
+            else:
+                print("   ✓ Inventory growth in line with sales")
+    except:
+        print("   (Not applicable or data unavailable)")
+    
+    # 7. The Lynch Bottom Line
+    print("\n" + "="*60)
+    print("LYNCH'S BOTTOM LINE QUESTIONS:")
+    print("="*60)
+    print("1. Is the company growing? (Revenue & Earnings)")
+    print("2. Is the P/E reasonable for the growth rate? (PEG < 1.5)")
+    print("3. Does it have manageable debt? (D/E < 0.5)")
+    print("4. Is it generating cash? (Positive FCF)")
+    print("5. Do insiders own shares? (Alignment)")
+    print("6. Can you explain the story in 2 minutes?")
+    
+    return {
+        'revenue_growth': revenue_growth,
+        'earnings_growth': earnings_growth,
+        'peg': peg,
+        'debt_to_equity': debt_to_equity,
+        'insider_ownership': insider_ownership
+    }
+
+# Example usage
+lynch_financial_analysis('HD')  # Home Depot
+```
+
+## The "Lynch Stalwarts" Strategy
+
+Lynch kept 10-20% of his portfolio in stalwarts for stability. Here's how to trade them:
+
+```python
+def stalwart_trading_strategy(ticker_symbol):
+    """
+    Lynch's approach to stalwarts: Buy low, sell high within range
+    
+    Example: Coca-Cola historically trades between P/E of 15-25
+    - Buy when P/E drops to 15-17 (market overreacts to bad news)
+    - Sell when P/E rises to 23-25 (market overexcited)
+    - Target: 30-50% gain, then rotate to next stalwart
+    """
+    import yfinance as yf
+    
+    ticker = yf.Ticker(ticker_symbol)
+    info = ticker.info
+    history = ticker.history(period="5y")
+    
+    current_pe = info.get('trailingPE', 0)
+    current_price = info.get('currentPrice', 0)
+    
+    # Calculate historical P/E range (simplified - would need more data)
+    # For demonstration, using typical stalwart ranges
+    
+    stalwart_ranges = {
+        'KO': {'low_pe': 20, 'high_pe': 28, 'typical_pe': 24},
+        'PG': {'low_pe': 18, 'high_pe': 26, 'typical_pe': 22},
+        'JNJ': {'low_pe': 15, 'high_pe': 22, 'typical_pe': 18},
+        'WMT': {'low_pe': 18, 'high_pe': 25, 'typical_pe': 21}
+    }
+    
+    if ticker_symbol in stalwart_ranges:
+        ranges = stalwart_ranges[ticker_symbol]
+        low_pe = ranges['low_pe']
+        high_pe = ranges['high_pe']
+        typical_pe = ranges['typical_pe']
+    else:
+        # Generic stalwart ranges
+        low_pe = 15
+        high_pe = 25
+        typical_pe = 20
+    
+    print(f"\nSTALWART TRADING STRATEGY: {ticker_symbol}")
+    print("="*60)
+    print(f"Current P/E: {current_pe:.1f}")
+    print(f"Historical Range: {low_pe} - {high_pe}")
+    print(f"Typical P/E: {typical_pe}")
+    
+    # Calculate buy and sell prices
+    earnings_per_share = current_price / current_pe if current_pe > 0 else 0
+    
+    buy_price_low = earnings_per_share * low_pe
+    buy_price_high = earnings_per_share * (low_pe + 2)
+    sell_price_low = earnings_per_share * (high_pe - 2)
+    sell_price_high = earnings_per_share * high_pe
+    
+    print(f"\nTRADING ZONES:")
+    print(f"BUY ZONE:  ${buy_price_low:.2f} - ${buy_price_high:.2f}")
+    print(f"HOLD ZONE: ${buy_price_high:.2f} - ${sell_price_low:.2f}")
+    print(f"SELL ZONE: ${sell_price_low:.2f} - ${sell_price_high:.2f}")
+    
+    print(f"\nCurrent Price: ${current_price:.2f}")
+    
+    # Current recommendation
+    if current_price <= buy_price_high:
+        action = "BUY - In attractive buying range"
+        potential_gain = (sell_price_low / current_price - 1) * 100
+        print(f"Action: {action}")
+        print(f"Potential Gain: {potential_gain:.0f}% to sell zone")
+    elif current_price >= sell_price_low:
+        action = "SELL - In selling range, take profits"
+        print(f"Action: {action}")
+        print("Rotate to another stalwart in buy zone")
+    else:
+        action = "HOLD - In middle range"
+        upside = (sell_price_low / current_price - 1) * 100
+        downside = (current_price / buy_price_high - 1) * 100
+        print(f"Action: {action}")
+        print(f"Upside to sell zone: {upside:.0f}%")
+        print(f"Downside to buy zone: -{downside:.0f}%")
+    
+    return action
+
+# Example
+stalwart_trading_strategy('KO')  # Coca-Cola
+```
+
+## Finding Lynch-Style Stocks Today
+
+### The "Walk Around" Method
+
+Lynch famously found stocks by observing the real world:
+
+```python
+def lynch_walk_around_ideas():
+    """
+    Peter Lynch's famous "walk around" method
+    
+    Find investment ideas in everyday life
+    """
+    
+    categories_to_watch = {
+        'Shopping Mall': [
+            "Which stores have longest lines?",
+            "Which new stores are opening?",
+            "Which stores are always busy vs empty?",
+            "What are teenagers buying?"
+        ],
+        
+        'Supermarket': [
+            "Which new products are selling out?",
+            "Which shelf space is expanding?",
+            "What's your spouse repeatedly buying?",
+            "Any new food trends?"
+        ],
+        
+        'Your Workplace': [
+            "What software does your company use?",
+            "Which vendors do you rely on?",
+            "What's making your job easier?",
+            "What B2B services are indispensable?"
+        ],
+        
+        'Your Kids': [
+            "What games are they obsessed with?",
+            "What do they beg you to buy?",
+            "Where do they want to eat?",
+            "What brands do they talk about?"
+        ],
+        
+        'Your Car': [
+            "Where do you get it serviced?",
+            "What parts are you replacing?",
+            "Which gas station do you prefer?",
+            "Any new auto services?"
+        ],
+        
+        'Your Home': [
+            "Which home improvement stores do you use?",
+            "What's the new thing neighbors are buying?",
+            "Which contractors are booked solid?",
+            "Any new home services?"
+        ]
+    }
+    
+    print("LYNCH'S 'WALK AROUND' METHOD")
+    print("="*60)
+    print("Investment ideas are all around you!\n")
+    
+    for category, questions in categories_to_watch.items():
+        print(f"\n{category}:")
+        for q in questions:
+            print(f"  • {q}")
+    
+    print("\n" + "="*60)
+    print("NEXT STEPS:")
+    print("1. Notice the trend/product")
+    print("2. Check if company is publicly traded")
+    print("3. Do the numbers support the story?")
+    print("4. Is it early enough? (Not saturated yet)")
+    print("5. Apply Lynch's financial analysis")
+    
+    print("\nLynch's famous examples:")
+    print("• Dunkin' Donuts - Wife loved their coffee")
+    print("• Taco Bell - Noticed expanding locations")
+    print("• L'eggs (Hanes) - Saw product everywhere in grocery stores")
+    print("• Body Shop - Daughters wouldn't shop anywhere else")
+
+lynch_walk_around_ideas()
+```
+
+### Modern Lynch-Style Screener
+
+```python
+import yfinance as yf
+import pandas as pd
+
+class LynchStyleScreener:
+    """
+    Screen for Peter Lynch-style fast growers
+    """
+    
+    def __init__(self):
+        self.min_revenue_growth = 0.15  # 15%+
+        self.max_peg = 1.5
+        self.max_debt_to_equity = 0.50
+        self.max_market_cap = 10_000_000_000  # $10B
+        self.min_market_cap = 300_000_000  # $300M
+    
+    def screen_stock(self, ticker_symbol):
+        """
+        Evaluate if stock fits Lynch fast grower criteria
+        """
+        ticker = yf.Ticker(ticker_symbol)
+        info = ticker.info
+        
+        try:
+            # Get key metrics
+            market_cap = info.get('marketCap', 0)
+            revenue_growth = info.get('revenueGrowth', 0)
+            earnings_growth = info.get('earningsGrowth', 0)
+            peg = info.get('pegRatio', 999)
+            debt_to_equity = info.get('debtToEquity', 999)
+            institutional_ownership = info.get('heldPercentInstitutions', 1)
+            
+            # Scoring system
+            score = 0
+            max_score = 0
+            reasons = []
+            
+            # 1. Market cap in sweet spot (10 points)
+            max_score += 10
+            if self.min_market_cap <= market_cap <= self.max_market_cap:
+                score += 10
+                reasons.append(f"✓ Market cap ${market_cap/1e9:.1f}B (room to grow)")
+            
+            # 2. Strong revenue growth (20 points)
+            max_score += 20
+            if revenue_growth >= 0.25:
+                score += 20
+                reasons.append(f"✓ Excellent revenue growth: {revenue_growth*100:.1f}%")
+            elif revenue_growth >= 0.15:
+                score += 15
+                reasons.append(f"✓ Strong revenue growth: {revenue_growth*100:.1f}%")
+            elif revenue_growth >= 0.10:
+                score += 10
+                reasons.append(f"→ Good revenue growth: {revenue_growth*100:.1f}%")
+            
+            # 3. Attractive PEG (20 points)
+            max_score += 20
+            if 0 < peg < 0.7:
+                score += 20
+                reasons.append(f"✓ Excellent PEG ratio: {peg:.2f}")
+            elif peg < 1.0:
+                score += 15
+                reasons.append(f"✓ Good PEG ratio: {peg:.2f}")
+            elif peg < 1.5:
+                score += 10
+                reasons.append(f"→ Fair PEG ratio: {peg:.2f}")
+            
+            # 4. Low debt (15 points)
+            max_score += 15
+            if debt_to_equity < 0.25:
+                score += 15
+                reasons.append(f"✓ Very low debt: D/E = {debt_to_equity:.2f}")
+            elif debt_to_equity < 0.50:
+                score += 10
+                reasons.append(f"✓ Low debt: D/E = {debt_to_equity:.2f}")
+            
+            # 5. Earnings growth (15 points)
+            max_score += 15
+            if earnings_growth >= 0.20:
+                score += 15
+                reasons.append(f"✓ Strong earnings growth: {earnings_growth*100:.1f}%")
+            elif earnings_growth >= 0.15:
+                score += 10
+                reasons.append(f"→ Good earnings growth: {earnings_growth*100:.1f}%")
+            
+            # 6. Under-followed (10 points)
+            max_score += 10
+            if institutional_ownership < 0.40:
+                score += 10
+                reasons.append(f"✓ Under-followed: {institutional_ownership*100:.0f}% institutional")
+            elif institutional_ownership < 0.60:
+                score += 5
+                reasons.append(f"→ Moderate coverage: {institutional_ownership*100:.0f}% institutional")
+            
+            # 7. Profitable (10 points)
+            max_score += 10
+            profit_margin = info.get('profitMargins', 0)
+            if profit_margin > 0.10:
+                score += 10
+                reasons.append(f"✓ Profitable: {profit_margin*100:.1f}% margins")
+            elif profit_margin > 0:
+                score += 5
+                reasons.append(f"→ Profitable: {profit_margin*100:.1f}% margins")
+            
+            # Calculate percentage
+            percentage = (score / max_score * 100) if max_score > 0 else 0
+            
+            # Lynch rating
+            if percentage >= 75:
+                rating = "EXCELLENT FAST GROWER - High conviction"
+            elif percentage >= 60:
+                rating = "STRONG CANDIDATE - Worth deep research"
+            elif percentage >= 45:
+                rating = "INTERESTING - Needs more due diligence"
+            else:
+                rating = "DOESN'T FIT CRITERIA - Pass"
+            
+            return {
+                'ticker': ticker_symbol,
+                'company': info.get('longName', ticker_symbol),
+                'score': score,
+                'max_score': max_score,
+                'percentage': percentage,
+                'rating': rating,
+                'reasons': reasons,
+                'metrics': {
+                    'market_cap': market_cap,
+                    'revenue_growth': revenue_growth * 100,
+                    'earnings_growth': earnings_growth * 100,
+                    'peg': peg,
+                    'debt_to_equity': debt_to_equity
+                }
+            }
+            
+        except Exception as e:
+            return {
+                'ticker': ticker_symbol,
+                'error': str(e)
+            }
+    
+    def display_analysis(self, result):
+        """
+        Display Lynch-style analysis
+        """
+        if 'error' in result:
+            print(f"Error analyzing {result['ticker']}: {result['error']}")
+            return
+        
+        print(f"\n{'='*70}")
+        print(f"LYNCH ANALYSIS: {result['company']} ({result['ticker']})")
+        print(f"{'='*70}")
+        print(f"\nSCORE: {result['score']}/{result['max_score']} ({result['percentage']:.0f}%)")
+        print(f"RATING: {result['rating']}")
+        
+        print(f"\nKEY FACTORS:")
+        for reason in result['reasons']:
+            print(f"  {reason}")
+        
+        print(f"\nKEY METRICS:")
+        metrics = result['metrics']
+        print(f"  Market Cap: ${metrics['market_cap']/1e9:.2f}B")
+        print(f"  Revenue Growth: {metrics['revenue_growth']:.1f}%")
+        print(f"  Earnings Growth: {metrics['earnings_growth']:.1f}%")
+        print(f"  PEG Ratio: {metrics['peg']:.2f}")
+        print(f"  Debt/Equity: {metrics['debt_to_equity']:.2f}")
+
+# Usage
+screener = LynchStyleScreener()
+
+# Test some stocks
+test_tickers = ['CHWY', 'AAPL', 'COST', 'DPZ', 'POOL']
+
+for ticker in test_tickers:
+    result = screener.screen_stock(ticker)
+    screener.display_analysis(result)
+```
+
+## Lynch's Portfolio Management Rules
+
+### Rule 1: You Don't Need to Be Right All the Time
+
+```python
+def lynch_portfolio_math():
+    """
+    Lynch's famous portfolio math
+    
+    You can be wrong 60% of the time and still do great!
+    """
+    
+    portfolio_examples = {
+        'Scenario 1: Lynch Method': {
+            'winners': [
+                ('10-bagger', 10.0, 0.10),  # 10x return, 10% position
+                ('5-bagger', 5.0, 0.10),
+                ('3-bagger', 3.0, 0.10),
+            ],
+            'losers': [
+                ('Down 50%', -0.5, 0.10),
+                ('Down 50%', -0.5, 0.10),
+                ('Down 50%', -0.5, 0.10),
+                ('Down 50%', -0.5, 0.10),
+                ('Down 50%', -0.5, 0.10),
+                ('Down 50%', -0.5, 0.10),
+                ('Down 50%', -0.5, 0.10)
+            ]
+        }
+    }
+    
+    print("LYNCH'S PORTFOLIO MATH")
+    print("="*60)
+    print("\n10 stocks, 3 big winners and 7 losers:\n")
+    
+    total_return = 0
+    
+    # Winners
+    print("Winners (30% of portfolio):")
+    for name, return_mult, weight in portfolio_examples['Scenario 1: Lynch Method']['winners']:
+        gain = (return_mult - 1) * weight
+        total_return += gain
+        print(f"  {name}: {return_mult}x return × {weight*100:.0f}% = +{gain*100:.0f}%")
+    
+    # Losers
+    print("\nLosers (70% of portfolio):")
+    for name, return_pct, weight in portfolio_examples['Scenario 1: Lynch Method']['losers']:
+        gain = return_pct * weight
+        total_return += gain
+        print(f"  {name}: {return_pct*100:.0f}% loss × {weight*100:.0f}% = {gain*100:.0f}%")
+    
+    print(f"\n{'='*60}")
+    print(f"TOTAL PORTFOLIO RETURN: +{total_return*100:.0f}%")
+    print(f"\nYou were WRONG on 7 out of 10 stocks (70% failure rate)")
+    print(f"But the 3 big winners more than made up for it!")
+    
+    print(f"\nLynch's insight:")
+    print(f"'You only need a few big winners to have a great portfolio.'")
+    print(f"'One 10-bagger makes up for ten losers.'")
+
+lynch_portfolio_math()
+```
+
+### Rule 2: Cut Losers, Let Winners Run
+
+```python
+def lynch_sell_discipline():
+    """
+    When to sell according to Lynch
+    """
+    
+    sell_rules = {
+        'Fast Grower': [
+            "✗ Growth rate slowing (from 25% to 10%)",
+            "✗ Market saturation approaching",
+            "✗ New store openings slowing",
+            "✗ Same-store sales declining",
+            "✗ PEG ratio > 2.0 (too expensive)",
+            "✗ Better opportunities elsewhere",
+            "✓ Story is intact = Hold (even if stock down)"
+        ],
+        
+        'Stalwart': [
+            "✗ Stock up 30-50% = Take profits",
+            "✗ P/E reaches historical high",
+            "✗ Temporarily overvalued = Sell, buy back later",
+            "✗ New entrants hurting market share",
+            "✓ If still cheap, hold even if stock down"
+        ],
+        
+        'Cyclical': [
+            "✗ Inventories building up (bad sign)",
+            "✗ Factories at capacity (peak coming)",
+            "✗ Competitors adding capacity",
+            "✗ Everyone bullish on the industry",
+            "✗ Two years into expansion",
+            "✗ Same-store sales peaking",
+            "CRITICAL: Sell cyclicals BEFORE the peak!"
+        ],
+        
+        'Turnaround': [
+            "✗ Turnaround complete (priced in)",
+            "✗ Debt still increasing",
+            "✗ Cash flow still negative",
+            "✗ Management changes again (chaos)",
+            "✓ Turnaround taking longer than expected = Be patient if progress evident"
+        ],
+        
+        'Asset Play': [
+            "✗ Assets have been monetized",
+            "✗ Stock at/above asset value",
+            "✗ Raider/activist involvement priced in",
+            "✓ Can hold longer - downside protected"
+        ]
+    }
+    
+    print("LYNCH'S SELL DISCIPLINE")
+    print("="*60)
+    
+    for category, rules in sell_rules.items():
+        print(f"\n{category}:")
+        for rule in rules:
+            print(f"  {rule}")
+    
+    print("\n" + "="*60)
+    print("GENERAL RULES:")
+    print("  • Never sell just because stock is down")
+    print("  • Never sell just because you have a profit")
+    print("  • Sell when STORY has changed, not when PRICE has changed")
+    print("  • Re-evaluate the story every quarter")
+    print("  • If you wouldn't buy more, consider selling")
+
+lynch_sell_discipline()
+```
+
+### Rule 3: Portfolio Sizing
+
+```python
+def lynch_position_sizing():
+    """
+    How Lynch sized positions
+    """
+    
+    print("LYNCH'S POSITION SIZING GUIDE")
+    print("="*60)
+    
+    guidelines = {
+        'Number of Stocks': '10-20 for most investors, up to 30 for active',
+        
+        'Position Sizes': {
+            'High Conviction Fast Grower': '8-10% (larger positions)',
+            'Medium Conviction': '5-7%',
+            'Small/Speculative': '2-4%',
+            'Stalwarts (defensive)': '5-8%'
+        },
+        
+        'Rebalancing': 'Let winners run, don\'t trim just because they\'re large',
+        
+        'Adding to Positions': 'Add to winners on dips, not to losers',
+        
+        'Maximum Single Position': '15% (but only if very high conviction)'
+    }
+    
+    print(f"\nNumber of Holdings: {guidelines['Number of Stocks']}")
+    
+    print(f"\nPosition Sizing:")
+    for position_type, size in guidelines['Position Sizes'].items():
+        print(f"  {position_type}: {size}")
+    
+    print(f"\nRebalancing: {guidelines['Rebalancing']}")
+    print(f"Adding to Positions: {guidelines['Adding to Positions']}")
+    print(f"Maximum Single Position: {guidelines['Maximum Single Position']}")
+    
+    print("\n" + "="*60)
+    print("LYNCH'S DIVERSIFICATION WISDOM:")
+    print("  • Too many stocks (50+) = Over-diversification")
+    print("  • Too few stocks (< 5) = Too risky")
+    print("  • Sweet spot: 10-20 stocks")
+    print("  • Let your winners become bigger positions")
+    print("  • Don't be afraid of 20% position if it's a 10-bagger")
+
+lynch_position_sizing()
+```
+
+## Famous Lynch Quotes Applied
+
+```python
+def lynch_wisdom():
+    """
+    Key Lynch principles to remember
+    """
+    
+    principles = [
+        {
+            'quote': '"Know what you own, and know why you own it."',
+            'application': 'Can you explain your thesis in 2 minutes? If not, don\'t own it.'
+        },
+        {
+            'quote': '"The stock market is filled with individuals who know the price of everything, but the value of nothing."',
+            'application': 'Focus on business fundamentals, not daily price movements.'
+        },
+        {
+            'quote': '"You get recessions, you have stock market declines. If you don\'t understand that\'s going to happen, then you\'re not ready, you won\'t do well in the markets."',
+            'application': 'Hold quality companies through downturns. They always recover.'
+        },
+        {
+            'quote': '"The person that turns over the most rocks wins the game."',
+            'application': 'Research more companies. Your edge comes from effort, not genius.'
+        },
+        {
+            'quote': '"If you stay half-alert, you can pick the spectacular performers right from your place of business or out of the neighborhood shopping mall."',
+            'application': 'Your everyday observations are valuable investment research.'
+        },
+        {
+            'quote': '"Nobody can predict interest rates, the future direction of the economy or the stock market. Dismiss all such forecasts."',
+            'application': 'Don\'t try to time the market. Focus on individual companies.'
+        },
+        {
+            'quote': '"Behind every stock is a company. Find out what it\'s doing."',
+            'application': 'You\'re buying a business, not a ticker symbol.'
+        },
+        {
+            'quote': '"I think you have to learn that there\'s a company behind every stock."',
+            'application': 'Understand the business model before buying the stock.'
+        }
+    ]
+    
+    print("LYNCH'S WISDOM: PRINCIPLES TO LIVE BY")
+    print("="*70)
+    
+    for i, principle in enumerate(principles, 1):
+        print(f"\n{i}. {principle['quote']}")
+        print(f"   → {principle['application']}")
+
+lynch_wisdom()
+```
+
+## Complete Lynch Evaluation Checklist
+
+```python
+def complete_lynch_checklist(ticker_symbol):
+    """
+    Comprehensive Peter Lynch evaluation
+    """
+    import yfinance as yf
+    
+    ticker = yf.Ticker(ticker_symbol)
+    info = ticker.info
+    
+    print(f"\nCOMPLETE LYNCH CHECKLIST: {ticker_symbol}")
+    print("="*70)
+    
+    checklist = {
+        'Understanding': [
+            "Can I explain what this company does?",
+            "Can I draw the business model?",
+            "Do I understand why customers buy from them?",
+            "Can I explain the investment thesis in 2 minutes?"
+        ],
+        
+        'Category Classification': [
+            "What type of stock is this? (Fast/Slow/Stalwart/Cyclical/Turnaround/Asset)",
+            "Does my analysis match this category?",
+            "Am I using the right valuation method for this category?"
+        ],
+        
+        'Growth & Fundamentals': [
+            f"Revenue growth: {info.get('revenueGrowth', 0)*100:.1f}% (Want 15%+ for fast growers)",
+            f"Earnings growth: {info.get('earningsGrowth', 0)*100:.1f}% (Want 15%+ for fast growers)",
+            f"PEG ratio: {info.get('pegRatio', 0):.2f} (Want < 1.5)",
+            f"Debt/Equity: {info.get('debtToEquity', 0):.2f} (Want < 0.5)"
+        ],
+        
+        'Competitive Position': [
+            "Does it have a niche or moat?",
+            "Can competitors easily replicate this?",
+            "What's the competitive advantage?",
+            "Is it #1 or #2 in its market?"
+        ],
+        
+        'Market Opportunity': [
+            "How big is the total addressable market?",
+            "What % is currently penetrated?",
+            "Can they expand geographically?",
+            "Room for new products/services?"
+        ],
+        
+        'Risks': [
+            "What could go wrong?",
+            "Is this a fad or sustainable?",
+            "What's the competition doing?",
+            "Any regulatory risks?",
+            "Execution risk on growth plans?"
+        ],
+        
+        'Valuation': [
+            "Is PEG ratio < 1.5?",
+            "Is P/E reasonable for the category?",
+            "Am I paying for growth that may not materialize?"
+        ],
+        
+        'Insider Activity': [
+            f"Insider ownership: {info.get('heldPercentInsiders', 0)*100:.1f}%",
+            "Are insiders buying or selling?",
+            "Do they have skin in the game?"
+        ],
+        
+        'Final Questions': [
+            "If this stock goes down 25%, would I buy more?",
+            "Am I comfortable owning this for 5 years?",
+            "Do I know something the market doesn't?",
+            "Is this better than my other opportunities?"
+        ]
+    }
+    
+    for section, items in checklist.items():
+        print(f"\n{section}:")
+        for item in items:
+            print(f"  □ {item}")
+    
+    print("\n" + "="*70)
+    print("If you can't check most of these boxes, don't buy the stock!")
+
+complete_lynch_checklist('HD')
+```
+
+## Conclusion
+
+Peter Lynch's investment philosophy is the most **accessible and practical** for individual investors. Unlike institutional investors who can't buy small caps or need complex models, retail investors can:
+
+**Key Advantages:**
+- Use everyday observations as research (the mall, workplace, home)
+- Buy small companies before Wall Street discovers them
+- Move quickly without regulatory constraints
+- Invest in what you understand deeply
+
+**Core Insights:**
+1. **Simple is better** - Understand the business a child could explain
+2. **Categories matter** - Different stock types require different analysis
+3. **PEG ratio** - Best single metric for fast growers (P/E ÷ Growth)
+4. **Big winners matter** - A few 10-baggers beat many singles
+5. **Story is everything** - If story intact, ignore price fluctuations
+
+**Best for investors who:**
+- Want to use common sense over complex math
+- Can research companies in daily life
+- Have patience for 3-5+ year holding periods
+- Want to understand what they own
+- Can handle volatility if thesis intact
+
+**The Lynch Promise:** You don't need to be a genius, work on Wall Street, or have an MBA. You just need to pay attention to the world around you, do basic homework on companies, and have the patience to let great businesses compound.
+
+The average investor's advantage: **You can wait. You can start small. You can learn from mistakes. And you only need a few great investments to build wealth.**
+
+Would you like me to analyze specific stocks using Lynch's methodology, or create guides for other legendary investors?

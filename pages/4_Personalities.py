@@ -77,6 +77,13 @@ PERSONALITIES = {
         "tagline": "Diversification + Balance + Risk Parity = All-Weather Returns",
         "philosophy": "Balance across economic environments, not asset classes",
         "color": "#FF6600"
+    },
+    "peter_lynch": {
+        "name": "Peter Lynch",
+        "emoji": "📚",
+        "tagline": "Know What You Own + Simple Businesses + Patience = Tenbaggers",
+        "philosophy": "Invest in what you know, find simple businesses before Wall Street discovers them",
+        "color": "#8B4513"
     }
 }
 
@@ -1492,6 +1499,252 @@ def evaluate_dalio(data: dict) -> dict:
     }
 
 
+def evaluate_lynch(data: dict) -> dict:
+    """
+    Evaluate stock using Peter Lynch's methodology.
+    
+    Lynch's approach:
+    - PEG ratio is the key metric (P/E / Growth Rate)
+    - Categorize stocks: Fast Grower, Stalwart, Slow Grower, Cyclical, Turnaround, Asset Play
+    - Favor simple, boring businesses
+    - Look for low institutional ownership (under-followed)
+    - Insider ownership matters
+    - Balance sheet strength (low debt)
+    """
+    score = 0
+    max_score = 100
+    metrics = {}
+    reasons = []
+    red_flags = []
+    stock_category = "Unknown"
+    
+    # === CATEGORIZE THE STOCK (informational) ===
+    revenue_growth = data.get('revenue_growth')
+    earnings_growth = data.get('earnings_growth')
+    market_cap = data.get('market_cap')
+    dividend_yield = data.get('dividend_yield')
+    trailing_pe = data.get('trailing_pe')
+    
+    # Determine category based on Lynch's framework
+    rev_growth_pct = (revenue_growth * 100) if revenue_growth and abs(revenue_growth) < 2 else (revenue_growth or 0)
+    earn_growth_pct = (earnings_growth * 100) if earnings_growth and abs(earnings_growth) < 2 else (earnings_growth or 0)
+    
+    if market_cap and market_cap > 50e9 and rev_growth_pct < 6 and dividend_yield and dividend_yield > 0.03:
+        stock_category = "Slow Grower"
+    elif market_cap and market_cap > 10e9 and 8 <= rev_growth_pct <= 15:
+        stock_category = "Stalwart"
+    elif rev_growth_pct > 20 and earn_growth_pct > 15:
+        stock_category = "Fast Grower"
+    elif data.get('sector') in ['Basic Materials', 'Energy', 'Industrials']:
+        stock_category = "Cyclical"
+    elif trailing_pe and trailing_pe < 0:
+        stock_category = "Turnaround"
+    elif data.get('price_to_book') and data.get('price_to_book') < 1.0:
+        stock_category = "Asset Play"
+    elif rev_growth_pct > 15:
+        stock_category = "Fast Grower"
+    else:
+        stock_category = "Stalwart"
+    
+    metrics['Category'] = {'value': stock_category, 'raw': stock_category}
+    
+    # === PEG RATIO (35 points) - Lynch's Key Metric ===
+    peg_ratio = data.get('peg_ratio')
+    
+    if peg_ratio and peg_ratio > 0:
+        metrics['PEG Ratio'] = {'value': f"{peg_ratio:.2f}", 'raw': peg_ratio}
+        if peg_ratio < 0.5:
+            score += 35
+            reasons.append(f"Excellent PEG: {peg_ratio:.2f} (Very undervalued)")
+        elif peg_ratio < 1.0:
+            score += 28
+            reasons.append(f"Attractive PEG: {peg_ratio:.2f} (Growth at reasonable price)")
+        elif peg_ratio < 1.5:
+            score += 18
+        elif peg_ratio < 2.0:
+            score += 10
+        else:
+            score += 3
+            red_flags.append(f"High PEG: {peg_ratio:.2f} (Overvalued for growth)")
+    else:
+        metrics['PEG Ratio'] = {'value': 'N/A', 'raw': None}
+        # Try to calculate from P/E and growth
+        if trailing_pe and trailing_pe > 0 and earn_growth_pct > 0:
+            calc_peg = trailing_pe / earn_growth_pct
+            metrics['PEG (Calc)'] = {'value': f"{calc_peg:.2f}", 'raw': calc_peg}
+            if calc_peg < 1.0:
+                score += 20
+                reasons.append(f"Calculated PEG: {calc_peg:.2f}")
+            elif calc_peg < 1.5:
+                score += 12
+    
+    # === GROWTH METRICS (25 points) ===
+    # Revenue Growth (12 points)
+    if revenue_growth is not None:
+        metrics['Revenue Growth'] = {'value': f"{rev_growth_pct:.1f}%", 'raw': rev_growth_pct}
+        if rev_growth_pct > 25:
+            score += 12
+            reasons.append(f"Strong revenue growth: {rev_growth_pct:.1f}% (Fast Grower territory)")
+        elif rev_growth_pct > 15:
+            score += 10
+        elif rev_growth_pct > 10:
+            score += 7
+        elif rev_growth_pct > 5:
+            score += 4
+        elif rev_growth_pct < 0:
+            red_flags.append(f"Declining revenue: {rev_growth_pct:.1f}%")
+    else:
+        metrics['Revenue Growth'] = {'value': 'N/A', 'raw': None}
+    
+    # Earnings Growth (13 points)
+    if earnings_growth is not None:
+        metrics['Earnings Growth'] = {'value': f"{earn_growth_pct:.1f}%", 'raw': earn_growth_pct}
+        if earn_growth_pct > 25:
+            score += 13
+            reasons.append(f"Excellent earnings growth: {earn_growth_pct:.1f}%")
+        elif earn_growth_pct > 15:
+            score += 10
+        elif earn_growth_pct > 10:
+            score += 7
+        elif earn_growth_pct > 0:
+            score += 4
+        elif earn_growth_pct < -10:
+            red_flags.append(f"Earnings declining: {earn_growth_pct:.1f}%")
+    else:
+        metrics['Earnings Growth'] = {'value': 'N/A', 'raw': None}
+    
+    # === BALANCE SHEET (15 points) ===
+    debt_to_equity = data.get('debt_to_equity')
+    current_ratio = data.get('current_ratio')
+    
+    # Debt level (10 points) - Lynch prefers low debt
+    if debt_to_equity is not None:
+        metrics['Debt/Equity'] = {'value': f"{debt_to_equity:.2f}", 'raw': debt_to_equity}
+        if debt_to_equity < 0.25:
+            score += 10
+            reasons.append(f"Very low debt: D/E {debt_to_equity:.2f}")
+        elif debt_to_equity < 0.50:
+            score += 8
+        elif debt_to_equity < 1.0:
+            score += 5
+        elif debt_to_equity > 2.0:
+            red_flags.append(f"High debt load: D/E {debt_to_equity:.2f}")
+    else:
+        metrics['Debt/Equity'] = {'value': 'N/A', 'raw': None}
+    
+    # Current ratio (5 points)
+    if current_ratio is not None:
+        metrics['Current Ratio'] = {'value': f"{current_ratio:.2f}", 'raw': current_ratio}
+        if current_ratio > 2.0:
+            score += 5
+        elif current_ratio > 1.5:
+            score += 4
+        elif current_ratio > 1.0:
+            score += 2
+        elif current_ratio < 1.0:
+            red_flags.append(f"Weak current ratio: {current_ratio:.2f}")
+    else:
+        metrics['Current Ratio'] = {'value': 'N/A', 'raw': None}
+    
+    # === OWNERSHIP & COVERAGE (15 points) ===
+    insider_ownership = data.get('held_percent_insiders')
+    institutional_ownership = data.get('held_percent_institutions')
+    
+    # Insider ownership (8 points) - Lynch likes skin in the game
+    if insider_ownership is not None:
+        insider_pct = insider_ownership * 100 if insider_ownership < 1 else insider_ownership
+        metrics['Insider Ownership'] = {'value': f"{insider_pct:.1f}%", 'raw': insider_pct}
+        if insider_pct > 15:
+            score += 8
+            reasons.append(f"High insider ownership: {insider_pct:.1f}%")
+        elif insider_pct > 10:
+            score += 6
+        elif insider_pct > 5:
+            score += 4
+        elif insider_pct > 1:
+            score += 2
+    else:
+        metrics['Insider Ownership'] = {'value': 'N/A', 'raw': None}
+    
+    # Low institutional ownership (7 points) - Lynch likes under-followed stocks
+    if institutional_ownership is not None:
+        inst_pct = institutional_ownership * 100 if institutional_ownership < 1 else institutional_ownership
+        metrics['Institutional Ownership'] = {'value': f"{inst_pct:.1f}%", 'raw': inst_pct}
+        if inst_pct < 30:
+            score += 7
+            reasons.append(f"Under-followed by institutions: {inst_pct:.1f}%")
+        elif inst_pct < 50:
+            score += 5
+        elif inst_pct < 70:
+            score += 3
+        # High institutional ownership isn't necessarily bad, just less upside from discovery
+    else:
+        metrics['Institutional Ownership'] = {'value': 'N/A', 'raw': None}
+    
+    # === VALUATION (10 points) ===
+    if trailing_pe and trailing_pe > 0:
+        metrics['P/E'] = {'value': f"{trailing_pe:.1f}x", 'raw': trailing_pe}
+        if trailing_pe < 12:
+            score += 10
+            reasons.append(f"Low P/E: {trailing_pe:.1f}x")
+        elif trailing_pe < 18:
+            score += 7
+        elif trailing_pe < 25:
+            score += 4
+        elif trailing_pe > 40:
+            red_flags.append(f"High P/E: {trailing_pe:.1f}x")
+    else:
+        metrics['P/E'] = {'value': 'N/A', 'raw': None}
+    
+    # === CATEGORY BONUS/PENALTY ===
+    # Lynch prefers Fast Growers and Stalwarts
+    if stock_category == "Fast Grower":
+        reasons.append("📈 Fast Grower: Lynch's favorite category for tenbaggers")
+    elif stock_category == "Stalwart":
+        reasons.append("🏢 Stalwart: Good for steady 30-50% gains")
+    elif stock_category == "Slow Grower":
+        red_flags.append("🐌 Slow Grower: Lynch typically avoids these")
+    elif stock_category == "Cyclical":
+        red_flags.append("🔄 Cyclical: Requires timing the economic cycle")
+    elif stock_category == "Asset Play":
+        reasons.append("💎 Asset Play: Hidden value potential")
+    elif stock_category == "Turnaround":
+        red_flags.append("⚠️ Turnaround: High risk, requires evidence of recovery")
+    
+    # Calculate final rating
+    percentage_score = (score / max_score * 100) if max_score > 0 else 0
+    
+    if percentage_score >= 75:
+        rating = "STRONG BUY"
+        rating_color = "green"
+        rating_emoji = "🟢"
+    elif percentage_score >= 60:
+        rating = "BUY"
+        rating_color = "lightgreen"
+        rating_emoji = "🟡"
+    elif percentage_score >= 45:
+        rating = "HOLD"
+        rating_color = "orange"
+        rating_emoji = "🟠"
+    else:
+        rating = "PASS"
+        rating_color = "red"
+        rating_emoji = "🔴"
+    
+    return {
+        'score': score,
+        'max_score': max_score,
+        'percentage': percentage_score,
+        'rating': rating,
+        'rating_color': rating_color,
+        'rating_emoji': rating_emoji,
+        'metrics': metrics,
+        'reasons': reasons,
+        'red_flags': red_flags,
+        'category': stock_category
+    }
+
+
 def display_personality_card(personality_key: str, result: dict, data: dict):
     """Display a personality evaluation card."""
     personality = PERSONALITIES[personality_key]
@@ -1586,6 +1839,7 @@ if analyze_button and ticker_input:
         druckenmiller_result = evaluate_druckenmiller(data)
         greenblatt_result = evaluate_greenblatt(data)
         dalio_result = evaluate_dalio(data)
+        lynch_result = evaluate_lynch(data)
         
         # === SUMMARY SECTION ===
         st.markdown("### 📊 Summary Ratings")
@@ -1620,11 +1874,11 @@ if analyze_button and ticker_input:
             </div>
             """, unsafe_allow_html=True)
         
-        # Second row - 2 personalities (centered)
+        # Second row - 3 personalities
         st.markdown("")  # Spacing
-        _, summary_col_gb, summary_col_rd, _ = st.columns([0.5, 1, 1, 0.5])
+        summary_cols2 = st.columns(3)
         
-        with summary_col_gb:
+        with summary_cols2[0]:
             st.markdown(f"""
             <div style="background-color: #6A0DAD; padding: 12px; border-radius: 10px; text-align: center;">
                 <h4 style="margin: 0; color: white; font-size: 14px;">🧮 Greenblatt</h4>
@@ -1633,7 +1887,7 @@ if analyze_button and ticker_input:
             </div>
             """, unsafe_allow_html=True)
         
-        with summary_col_rd:
+        with summary_cols2[1]:
             st.markdown(f"""
             <div style="background-color: #FF6600; padding: 12px; border-radius: 10px; text-align: center;">
                 <h4 style="margin: 0; color: white; font-size: 14px;">🌊 Dalio</h4>
@@ -1642,17 +1896,27 @@ if analyze_button and ticker_input:
             </div>
             """, unsafe_allow_html=True)
         
+        with summary_cols2[2]:
+            st.markdown(f"""
+            <div style="background-color: #8B4513; padding: 12px; border-radius: 10px; text-align: center;">
+                <h4 style="margin: 0; color: white; font-size: 14px;">📚 Lynch</h4>
+                <h3 style="margin: 8px 0; color: white;">{lynch_result['rating_emoji']} {lynch_result['rating']}</h3>
+                <p style="margin: 0; color: #ccc; font-size: 12px;">{lynch_result['percentage']:.0f}%</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
         st.markdown("---")
         
         # === TABBED DETAILED BREAKDOWN ===
         st.markdown("### 🔍 Detailed Analysis")
         
-        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
             "🏛️ Warren Buffett",
             "🐱 Roaring Kitty", 
             "📈 Druckenmiller",
             "🧮 Greenblatt",
-            "🌊 Ray Dalio"
+            "🌊 Ray Dalio",
+            "📚 Peter Lynch"
         ])
         
         with tab1:
@@ -1673,6 +1937,11 @@ if analyze_button and ticker_input:
             display_personality_card("ray_dalio", dalio_result, data)
             if dalio_result.get('position_size'):
                 st.info(f"💡 **Suggested Position Size:** {dalio_result['position_size']}")
+        
+        with tab6:
+            display_personality_card("peter_lynch", lynch_result, data)
+            if lynch_result.get('category'):
+                st.info(f"📊 **Lynch Category:** {lynch_result['category']}")
 
 elif analyze_button and not ticker_input:
     st.warning("Please enter a ticker symbol.")
@@ -1775,4 +2044,38 @@ with st.expander("📖 Ray Dalio Methodology"):
     
     **Key Insight:** Dalio thinks about 4 environments (rising/falling growth × rising/falling inflation).
     Stocks suited for multiple environments or with defensive characteristics score higher.
+    """)
+
+with st.expander("📖 Peter Lynch Methodology"):
+    st.markdown("""
+    **Philosophy:** Invest in what you know, find simple businesses before Wall Street discovers them.
+    
+    **The Six Stock Categories:**
+    - **Fast Growers:** 20%+ growth, Lynch's favorites for tenbaggers
+    - **Stalwarts:** Large caps with 10-15% growth, good for 30-50% gains
+    - **Slow Growers:** Under 6% growth with high dividends, typically avoid
+    - **Cyclicals:** Tied to economic cycles, requires timing
+    - **Turnarounds:** Troubled companies restructuring, high risk
+    - **Asset Plays:** Hidden value not reflected in stock price
+    
+    **Scoring (100 points total):**
+    - **PEG Ratio (35 pts):** The key metric - P/E divided by growth rate
+    - **Growth Metrics (25 pts):** Revenue and earnings growth rates
+    - **Balance Sheet (15 pts):** Low debt, strong current ratio
+    - **Ownership (15 pts):** High insider ownership, low institutional (under-followed)
+    - **Valuation (10 pts):** P/E reasonableness
+    
+    **PEG Rules:**
+    - PEG < 0.5: Very undervalued
+    - PEG < 1.0: Fairly valued (growth equals P/E)
+    - PEG > 1.5: Overvalued
+    
+    **Ratings:**
+    - 🟢 **STRONG BUY** (75%+): Potential tenbagger
+    - 🟡 **BUY** (60-75%): Good Lynch-style investment
+    - 🟠 **HOLD** (45-60%): Mixed signals
+    - 🔴 **PASS** (<45%): Doesn't fit Lynch criteria
+    
+    **Key Insight:** Lynch emphasizes knowing what you own. If you can't explain why you own 
+    a stock in two minutes ("the two-minute drill"), you don't understand it well enough.
     """)
